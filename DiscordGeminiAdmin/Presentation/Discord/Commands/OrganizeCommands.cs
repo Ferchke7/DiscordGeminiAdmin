@@ -50,9 +50,9 @@ public sealed class OrganizeCommands(IMessageBus bus) : ApplicationCommandModule
             result.Value));
     }
 
-    [SlashCommand("ai", "Попросить ИИ организовать голосовые, добавить группы, каналы или роли по вашей просьбе")]
+    [SlashCommand("ai", "Универсальный ИИ: напишет код, ответит на вопрос, найдёт в истории чата или организует сервер")]
     public async Task AiOrganizeAsync(
-        [SlashCommandParameter(Name = "prompt", Description = "Что сделать (например: организуй 4 голосовых канала для пати и стримов, добавь группу Проекты)")] string prompt)
+        [SlashCommandParameter(Name = "prompt", Description = "Ваш запрос: код, вопрос, поиск по истории или организация голосовых/групп")] string prompt)
     {
         if (Context.Guild is null)
         {
@@ -75,7 +75,102 @@ public sealed class OrganizeCommands(IMessageBus bus) : ApplicationCommandModule
         }
 
         await FollowupAsync(BuildAppliedStructureCard(
-            "🤖 ИИ выполнил организацию сервера",
+            result.Value.Changes.Count > 0 ? "🤖 ИИ выполнил организацию сервера" : "🤖 Ответ Code-Guru AI",
+            result.Value));
+    }
+
+    [SlashCommand("code", "Попросить ИИ написать код, решить задачу или исправить ошибку")]
+    public async Task CodeAsync(
+        [SlashCommandParameter(Name = "task", Description = "Что нужно написать или исправить (например: REST контроллер на Spring Boot)")] string task,
+        [SlashCommandParameter(Name = "language", Description = "Язык программирования (например: C#, Java, Python, TypeScript, SQL)")] string? language = null)
+    {
+        if (Context.Guild is null)
+        {
+            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+            return;
+        }
+
+        await RespondAsync(InteractionCallback.DeferredMessage());
+
+        var langPart = string.IsNullOrWhiteSpace(language) ? string.Empty : $" (язык: {language})";
+        var prompt = $"Напиши чистый, рабочий код с кратким объяснением{langPart}: {task}. Не меняй каналы сервера (changes = []).";
+
+        var result = await bus.InvokeAsync<Result<StructureProposal>>(new AnalyzeGuildStructure(
+            GuildId.From(Context.Guild.Id),
+            Goal: prompt,
+            FallbackChannelId: ChannelId.From(Context.Channel.Id),
+            ApplyImmediately: true));
+
+        if (result.IsFailed)
+        {
+            await FollowupAsync(EmbedTheme.ErrorCard(result, "Ошибка генерации кода"));
+            return;
+        }
+
+        await FollowupAsync(BuildAppliedStructureCard(
+            $"💻 Код и решение{(string.IsNullOrWhiteSpace(language) ? string.Empty : $" ({language})")}",
+            result.Value));
+    }
+
+    [SlashCommand("ask", "Задать любой вопрос ИИ-ассистенту")]
+    public async Task AskAsync(
+        [SlashCommandParameter(Name = "question", Description = "Ваш вопрос по программированию, серверу или любой теме")] string question)
+    {
+        if (Context.Guild is null)
+        {
+            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+            return;
+        }
+
+        await RespondAsync(InteractionCallback.DeferredMessage());
+
+        var result = await bus.InvokeAsync<Result<StructureProposal>>(new AnalyzeGuildStructure(
+            GuildId.From(Context.Guild.Id),
+            Goal: $"Ответь подробно на вопрос пользователя (не меняя каналы сервера, changes = []): {question}",
+            FallbackChannelId: ChannelId.From(Context.Channel.Id),
+            ApplyImmediately: true));
+
+        if (result.IsFailed)
+        {
+            await FollowupAsync(EmbedTheme.ErrorCard(result, "Ошибка ответа ИИ"));
+            return;
+        }
+
+        await FollowupAsync(BuildAppliedStructureCard(
+            $"🧠 Ответ ИИ: {(question.Length > 80 ? question[..80] + "..." : question)}",
+            result.Value));
+    }
+
+    [SlashCommand("history", "Найти сообщение, тему или код в истории этого чата или сделать сводку переписки")]
+    public async Task HistoryAsync(
+        [SlashCommandParameter(Name = "query", Description = "Что найти в истории чата (оставьте пустым для общей выжимки переписки)")] string? query = null)
+    {
+        if (Context.Guild is null)
+        {
+            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+            return;
+        }
+
+        await RespondAsync(InteractionCallback.DeferredMessage());
+
+        var goal = string.IsNullOrWhiteSpace(query)
+            ? "Проанализируй историю сообщений этого канала (<channel_history>) и сделай краткую, понятную сводку: о чём общались участники, какие вопросы и выводы были."
+            : $"Найди в истории сообщений этого канала (<channel_history>) информацию по запросу: «{query}». Укажи, кто, когда и что именно писал.";
+
+        var result = await bus.InvokeAsync<Result<StructureProposal>>(new AnalyzeGuildStructure(
+            GuildId.From(Context.Guild.Id),
+            Goal: goal,
+            FallbackChannelId: ChannelId.From(Context.Channel.Id),
+            ApplyImmediately: true));
+
+        if (result.IsFailed)
+        {
+            await FollowupAsync(EmbedTheme.ErrorCard(result, "Ошибка поиска по истории чата"));
+            return;
+        }
+
+        await FollowupAsync(BuildAppliedStructureCard(
+            string.IsNullOrWhiteSpace(query) ? "📜 Сводка истории чата" : $"🔍 Поиск по истории чата: {query}",
             result.Value));
     }
 
@@ -272,6 +367,19 @@ public sealed class OrganizeCommands(IMessageBus bus) : ApplicationCommandModule
 
     internal static InteractionMessageProperties BuildAppliedStructureCard(string title, StructureProposal proposal)
     {
+        if (proposal.Changes.Count == 0)
+        {
+            var answerText = proposal.Summary.Length > 3950
+                ? proposal.Summary[..3950] + "\n..."
+                : proposal.Summary;
+
+            return EmbedTheme.Card(
+                title,
+                answerText,
+                EmbedTheme.Purple,
+                ephemeral: false);
+        }
+
         var sb = new StringBuilder();
         sb.AppendLine(proposal.Summary);
         sb.AppendLine();

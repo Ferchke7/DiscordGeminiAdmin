@@ -128,25 +128,33 @@ public sealed partial class MessageCreateGatewayHandler(
             return true;
         }
 
-        // 4. /ai ... или !ai ... или /organize ... — сразу выполняет организацию голосовых/групп/каналов/ролей
+        // 4. /ai ..., /code ..., /ask ..., /history ..., /organize ...
         if (lower.StartsWith("/ai", StringComparison.Ordinal)
             || lower.StartsWith("!ai", StringComparison.Ordinal)
+            || lower.StartsWith("/code", StringComparison.Ordinal)
+            || lower.StartsWith("!code", StringComparison.Ordinal)
+            || lower.StartsWith("/ask", StringComparison.Ordinal)
+            || lower.StartsWith("!ask", StringComparison.Ordinal)
+            || lower.StartsWith("/history", StringComparison.Ordinal)
+            || lower.StartsWith("!history", StringComparison.Ordinal)
             || lower.StartsWith("/organize", StringComparison.Ordinal)
             || lower.StartsWith("!organize", StringComparison.Ordinal))
         {
-            var prompt = raw.Contains(' ') ? raw[(raw.IndexOf(' ') + 1)..].Trim() : "Организуй голосовые и текстовые каналы по группам";
+            var prompt = raw.Contains(' ') ? raw[(raw.IndexOf(' ') + 1)..].Trim() : "Сделай краткую сводку последних сообщений в чате";
             var result = await bus.InvokeAsync<Result<StructureProposal>>(
                 new AnalyzeGuildStructure(guildId, prompt, channelId, ApplyImmediately: true));
 
             var card = result.IsSuccess
-                ? OrganizeCommands.BuildAppliedStructureCard("🤖 ИИ выполнил организацию сервера", result.Value)
+                ? OrganizeCommands.BuildAppliedStructureCard(
+                    result.Value.Changes.Count > 0 ? "🤖 ИИ выполнил организацию сервера" : "🤖 Ответ Code-Guru AI",
+                    result.Value)
                 : EmbedTheme.ErrorCard(result, "Ошибка выполнения запроса ИИ");
 
             await restClient.SendMessageAsync(message.ChannelId, EmbedTheme.ToChannelMessage(card));
             return true;
         }
 
-        // 5. Упоминание бота (@Code-Guru <просьба>) — сразу выполняет просьбу по организации голосовых/групп/каналов/ролей
+        // 5. Упоминание бота (@Code-Guru <запрос>) — пишет код, отвечает на вопросы, ищет в истории чата или организует сервер
         if (LeadingBotMentionRegex().IsMatch(raw))
         {
             var afterMention = LeadingBotMentionRegex().Replace(raw, string.Empty).Trim();
@@ -165,7 +173,9 @@ public sealed partial class MessageCreateGatewayHandler(
                 new AnalyzeGuildStructure(guildId, afterMention, channelId, ApplyImmediately: true));
 
             var card = orgResult.IsSuccess
-                ? OrganizeCommands.BuildAppliedStructureCard("🤖 ИИ выполнил ваш запрос", orgResult.Value)
+                ? OrganizeCommands.BuildAppliedStructureCard(
+                    orgResult.Value.Changes.Count > 0 ? "🤖 ИИ выполнил организацию сервера" : "🤖 Ответ Code-Guru AI",
+                    orgResult.Value)
                 : EmbedTheme.ErrorCard(orgResult, "Ошибка выполнения запроса ИИ");
 
             await restClient.SendMessageAsync(message.ChannelId, EmbedTheme.ToChannelMessage(card));

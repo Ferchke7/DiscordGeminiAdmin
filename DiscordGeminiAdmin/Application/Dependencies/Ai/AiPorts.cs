@@ -53,7 +53,8 @@ public sealed record GuildStructureContext(
     string ServerTheme,
     string? AdditionalGoal,
     GuildStructureSnapshot CurrentStructure,
-    IReadOnlyList<KnowledgeHitDto> KnowledgeContext);
+    IReadOnlyList<KnowledgeHitDto> KnowledgeContext,
+    IReadOnlyList<string>? RecentChannelMessages = null);
 
 public sealed record StructureAdviceDto(
     string Summary,

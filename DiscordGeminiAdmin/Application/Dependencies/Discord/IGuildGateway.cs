@@ -36,6 +36,7 @@ public interface IGuildGateway
     Task<Result> SendAnnouncementAsync(ChannelId channelId, string title, string message, string style, ulong? mentionRoleId, CancellationToken ct);
     Task<Result<ChannelId>> CreateQuickChannelAsync(GuildId guildId, string name, string? categoryName, string? topic, bool isVoice, string reason, CancellationToken ct);
     Task<Result<ulong>> CreateOrAssignRoleAsync(GuildId guildId, string roleName, MemberId? assignToMember, string reason, CancellationToken ct);
+    Task<Result<IReadOnlyList<string>>> GetRecentChannelHistoryAsync(ChannelId channelId, int limit, CancellationToken ct);
     Task<Result<GuildStructureSnapshot>> GetGuildStructureAsync(GuildId guildId, CancellationToken ct);
     Task<Result> ApplyStructureChangesAsync(GuildId guildId, IReadOnlyList<ProposedChange> changes, CancellationToken ct);
 }

@@ -65,16 +65,39 @@ public static class AnalyzeGuildStructureUseCase
 
         var knowledge = await knowledgeIndex.GetRulesAndPrecedentsAsync(command.GuildId, 20, cancellationToken);
 
+        IReadOnlyList<string>? recentHistory = null;
+        if (command.FallbackChannelId is { } historyChannelId)
+        {
+            var historyRes = await gateway.GetRecentChannelHistoryAsync(historyChannelId, 60, cancellationToken);
+            if (historyRes.IsSuccess)
+                recentHistory = historyRes.Value;
+        }
+
         var adviceResult = await advisorAi.ProposeStructureAsync(
             new GuildStructureContext(
                 command.GuildId,
                 theme,
                 command.Goal,
                 structureSnapshot.Value,
-                knowledge),
+                knowledge,
+                recentHistory),
             cancellationToken);
         if (adviceResult.IsFailed)
             return adviceResult.ToResult();
+
+        // Если ИИ ответил на вопрос, написал код или нашёл информацию в истории чата (без изменения каналов),
+        // возвращаем ответ в виде информационного объекта без создания пустого плана структуры в БД.
+        if (command.ApplyImmediately && adviceResult.Value.Changes.Count == 0)
+        {
+            await unitOfWork.SaveAsync(cancellationToken);
+            return Result.Ok(new StructureProposal(Guid.CreateVersion7())
+            {
+                GuildId = command.GuildId,
+                Summary = adviceResult.Value.Summary.Trim(),
+                Changes = [],
+                CreatedAt = now
+            });
+        }
 
         var proposalResult = StructureProposal.Create(
             command.GuildId,

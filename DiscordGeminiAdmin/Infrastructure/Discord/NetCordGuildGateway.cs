@@ -459,6 +459,44 @@ internal sealed class NetCordGuildGateway(
         }
     }
 
+    public async Task<Result<IReadOnlyList<string>>> GetRecentChannelHistoryAsync(
+        ChannelId channelId,
+        int limit,
+        CancellationToken ct)
+    {
+        try
+        {
+            var clamped = Math.Clamp(limit, 1, 100);
+            var messages = new List<string>(clamped);
+
+            await foreach (var msg in rest.GetMessagesAsync(channelId.Value).WithCancellation(ct))
+            {
+                if (!string.IsNullOrWhiteSpace(msg.Content))
+                {
+                    messages.Add($"[{msg.CreatedAt:dd.MM HH:mm}] @{msg.Author.Username}: {msg.Content}");
+                }
+                else if (msg.Embeds.Count > 0 && !string.IsNullOrWhiteSpace(msg.Embeds[0].Title))
+                {
+                    var desc = msg.Embeds[0].Description;
+                    if (desc is not null && desc.Length > 200)
+                        desc = desc[..200] + "...";
+                    messages.Add($"[{msg.CreatedAt:dd.MM HH:mm}] @{msg.Author.Username} [Карточка]: {msg.Embeds[0].Title} — {desc}");
+                }
+
+                if (messages.Count >= clamped)
+                    break;
+            }
+
+            messages.Reverse();
+            return Result.Ok<IReadOnlyList<string>>(messages);
+        }
+        catch (RestException ex)
+        {
+            logger.LogWarning(ex, "Не удалось получить историю сообщений канала {ChannelId}", channelId.Value);
+            return Result.Fail($"Не удалось прочитать историю канала: {ex.Message}");
+        }
+    }
+
     public async Task<Result<GuildStructureSnapshot>> GetGuildStructureAsync(GuildId guildId, CancellationToken ct)
     {
         try
