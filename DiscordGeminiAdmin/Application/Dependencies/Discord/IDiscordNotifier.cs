@@ -23,4 +23,14 @@ public interface IDiscordNotifier
         ChannelId modChannelId,
         StructureProposal proposal,
         CancellationToken ct);
+
+    Task<Result> SendAdminActionLogAsync(
+        ChannelId modChannelId,
+        string actionTitle,
+        MemberId? targetMemberId,
+        MemberId moderatorId,
+        string reason,
+        uint colorHex,
+        Guid? unbanCaseId,
+        CancellationToken ct);
 }

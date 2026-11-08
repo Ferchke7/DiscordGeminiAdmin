@@ -1,11 +1,13 @@
 using DiscordGeminiAdmin.Application.Dependencies.Discord;
 using DiscordGeminiAdmin.Application.Dependencies.Persistence;
+using DiscordGeminiAdmin.Application.UseCases.Moderation.AdminActions;
 using DiscordGeminiAdmin.Application.UseCases.Moderation.Ban;
 using DiscordGeminiAdmin.Application.UseCases.Moderation.Dismiss;
 using DiscordGeminiAdmin.Application.UseCases.Moderation.Kick;
 using DiscordGeminiAdmin.Application.UseCases.Moderation.RevertBan;
 using DiscordGeminiAdmin.Application.UseCases.Moderation.Timeout;
 using DiscordGeminiAdmin.Domain.Guilds.Repositories;
+using DiscordGeminiAdmin.Domain.Knowledge.Repositories;
 using DiscordGeminiAdmin.Domain.Moderation;
 using DiscordGeminiAdmin.Domain.Moderation.Repositories;
 using DiscordGeminiAdmin.SharedKernel;
@@ -123,5 +125,47 @@ public class ModerationActionsUseCaseTests
         (await DismissCaseUseCase.Handle(new DismissCase(case3.Id), _unitOfWork, _cases, _now, CancellationToken.None))
             .IsSuccess.ShouldBeTrue();
         case3.Status.ShouldBe(ModerationCaseStatus.Dismissed);
+    }
+
+    [Fact]
+    public async Task Admin_ban_rejects_protected_member_with_M101()
+    {
+        var notifier = Substitute.For<IDiscordNotifier>();
+        var kb = Substitute.For<IKnowledgeDocumentRepository>();
+        var useCase = new AdminModerationUseCase(_gateway, notifier, _guilds, _cases, kb, _unitOfWork, TimeProvider.System);
+
+        var guildId = GuildId.From(10);
+        var targetId = MemberId.From(20);
+        _gateway.GetMemberProfileAsync(guildId, targetId, Arg.Any<CancellationToken>())
+            .Returns(Result.Ok(new MemberProfile(IsOwner: false, IsBot: false, IsStaff: true, OutranksBot: false)));
+
+        var result = await useCase.Handle(
+            new AdminBanMember(guildId, targetId, MemberId.From(99), "Проверка иерархии"),
+            CancellationToken.None);
+
+        result.ShouldHaveErrorCode("M101");
+        await _gateway.DidNotReceive().BanAsync(guildId, targetId, Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Admin_warn_records_case_and_returns_strike_count()
+    {
+        var notifier = Substitute.For<IDiscordNotifier>();
+        var kb = Substitute.For<IKnowledgeDocumentRepository>();
+        var useCase = new AdminModerationUseCase(_gateway, notifier, _guilds, _cases, kb, _unitOfWork, TimeProvider.System);
+
+        var guildId = GuildId.From(10);
+        var targetId = MemberId.From(20);
+        _cases.GetByMemberAsync(guildId, targetId, Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns([OpenCase()]);
+
+        var result = await useCase.Handle(
+            new AdminWarnMember(guildId, targetId, MemberId.From(99), "Флуд в чате", "R1"),
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.TotalCases.ShouldBe(1);
+        _cases.Received(1).Add(Arg.Any<ModerationCase>());
+        await _unitOfWork.Received(1).SaveAsync(Arg.Any<CancellationToken>());
     }
 }

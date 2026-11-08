@@ -17,25 +17,19 @@ public sealed class StructureProposalButtons(IMessageBus bus) : ComponentInterac
         await RespondAsync(InteractionCallback.DeferredMessage(MessageFlags.Ephemeral));
 
         var result = await bus.InvokeAsync<Result>(new ApproveProposal(proposalId));
-        await FollowupAsync(new InteractionMessageProperties
-        {
-            Content = result.IsSuccess
-                ? "План одобрен и успешно применён к каналам/ролям сервера."
-                : string.Join("; ", result.Errors.Select(e => e.Message)),
-            Flags = MessageFlags.Ephemeral
-        });
+        await FollowupAsync(result.IsSuccess
+            ? EmbedTheme.SuccessCard(
+                "План структуры применён",
+                "Категории, каналы и роли сервера успешно обновлены по утверждённому плану.")
+            : EmbedTheme.ErrorCard(result, "Ошибка применения плана"));
     }
 
     [ComponentInteraction("proposal-reject")]
     public async Task<InteractionMessageProperties> RejectAsync(Guid proposalId)
     {
         var result = await bus.InvokeAsync<Result>(new RejectProposal(proposalId));
-        return new InteractionMessageProperties
-        {
-            Content = result.IsSuccess
-                ? "План изменения структуры отклонён."
-                : string.Join("; ", result.Errors.Select(e => e.Message)),
-            Flags = MessageFlags.Ephemeral
-        };
+        return result.IsSuccess
+            ? EmbedTheme.Card("✖️ План структуры отклонён", "Изменения не были применены к серверу.", EmbedTheme.Warning)
+            : EmbedTheme.ErrorCard(result, "Ошибка отклонения плана");
     }
 }

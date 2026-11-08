@@ -64,7 +64,7 @@ internal sealed class NetCordGuildGateway(
         catch (RestException ex)
         {
             logger.LogWarning(ex, "Discord отклонил бан {MemberId}", memberId.Value);
-            return Result.Fail("Discord отклонил бан");
+            return Result.Fail("Discord отклонил бан (проверьте права и иерархию ролей бота)");
         }
     }
 
@@ -82,7 +82,7 @@ internal sealed class NetCordGuildGateway(
         catch (RestException ex)
         {
             logger.LogWarning(ex, "Discord отклонил разбан {MemberId}", memberId.Value);
-            return Result.Fail("Discord отклонил разбан");
+            return Result.Fail("Discord отклонил разбан (возможно, пользователь не в бане)");
         }
     }
 
@@ -100,7 +100,7 @@ internal sealed class NetCordGuildGateway(
         catch (RestException ex)
         {
             logger.LogWarning(ex, "Discord отклонил кик {MemberId}", memberId.Value);
-            return Result.Fail("Discord отклонил кик");
+            return Result.Fail("Discord отклонил кик (проверьте иерархию ролей бота)");
         }
     }
 
@@ -125,7 +125,290 @@ internal sealed class NetCordGuildGateway(
         catch (RestException ex)
         {
             logger.LogWarning(ex, "Discord отклонил таймаут {MemberId}", memberId.Value);
-            return Result.Fail("Discord отклонил таймаут");
+            return Result.Fail("Discord отклонил таймаут (проверьте права Moderate Members)");
+        }
+    }
+
+    public async Task<Result> RemoveTimeoutAsync(
+        GuildId guildId,
+        MemberId memberId,
+        string reason,
+        CancellationToken ct)
+    {
+        try
+        {
+            await rest.ModifyGuildUserAsync(
+                guildId.Value,
+                memberId.Value,
+                opts => opts.TimeOutUntil = null,
+                new RestRequestProperties { AuditLogReason = reason },
+                ct);
+            return Result.Ok();
+        }
+        catch (RestException ex)
+        {
+            logger.LogWarning(ex, "Discord отклонил снятие таймаута {MemberId}", memberId.Value);
+            return Result.Fail("Discord отклонил снятие таймаута");
+        }
+    }
+
+    public async Task<Result<int>> PurgeMessagesAsync(
+        ChannelId channelId,
+        int count,
+        MemberId? authorFilter,
+        string reason,
+        CancellationToken ct)
+    {
+        try
+        {
+            var cutoff = timeProvider.GetUtcNow().AddDays(-14);
+            var idsToDelete = new List<ulong>(count);
+
+            await foreach (var msg in rest.GetMessagesAsync(channelId.Value).WithCancellation(ct))
+            {
+                if (msg.CreatedAt < cutoff)
+                    break;
+
+                if (authorFilter is not null && msg.Author.Id != authorFilter.Value.Value)
+                    continue;
+
+                idsToDelete.Add(msg.Id);
+                if (idsToDelete.Count >= count)
+                    break;
+            }
+
+            if (idsToDelete.Count == 0)
+                return Result.Ok(0);
+
+            var props = new RestRequestProperties { AuditLogReason = reason };
+            if (idsToDelete.Count == 1)
+            {
+                await rest.DeleteMessageAsync(channelId.Value, idsToDelete[0], props, ct);
+            }
+            else
+            {
+                await rest.DeleteMessagesAsync(channelId.Value, idsToDelete, props, ct);
+            }
+
+            return Result.Ok(idsToDelete.Count);
+        }
+        catch (RestException ex)
+        {
+            logger.LogWarning(ex, "Ошибка очистки сообщений в канале {ChannelId}", channelId.Value);
+            return Result.Fail("Discord отклонил удаление сообщений (проверьте право Manage Messages)");
+        }
+    }
+
+    public async Task<Result> SetSlowmodeAsync(
+        ChannelId channelId,
+        int seconds,
+        string reason,
+        CancellationToken ct)
+    {
+        try
+        {
+            await rest.ModifyGuildChannelAsync(
+                channelId.Value,
+                opts => opts.Slowmode = seconds,
+                new RestRequestProperties { AuditLogReason = reason },
+                ct);
+            return Result.Ok();
+        }
+        catch (RestException ex)
+        {
+            logger.LogWarning(ex, "Ошибка установки slowmode в канале {ChannelId}", channelId.Value);
+            return Result.Fail("Не удалось изменить медленный режим канала");
+        }
+    }
+
+    public async Task<Result> SetChannelLockAsync(
+        GuildId guildId,
+        ChannelId channelId,
+        bool locked,
+        string reason,
+        CancellationToken ct)
+    {
+        try
+        {
+            var overwrite = new PermissionOverwriteProperties(guildId.Value, PermissionOverwriteType.Role)
+            {
+                Denied = locked ? Permissions.SendMessages : default
+            };
+
+            await rest.ModifyGuildChannelPermissionsAsync(
+                channelId.Value,
+                overwrite,
+                new RestRequestProperties { AuditLogReason = reason },
+                ct);
+
+            var embed = new EmbedProperties
+            {
+                Title = locked ? "🔒 Канал временно закрыт" : "🔓 Канал снова открыт",
+                Description = locked
+                    ? $"Отправка сообщений временно приостановлена модератором.\n**Причина:** {reason}"
+                    : $"Ограничение на отправку сообщений снято.\n**Комментарий:** {reason}",
+                Color = new Color(locked ? 0xE74C3C : 0x2ECC71)
+            };
+
+            await rest.SendMessageAsync(
+                channelId.Value,
+                new MessageProperties { Embeds = [embed] },
+                cancellationToken: ct);
+
+            return Result.Ok();
+        }
+        catch (RestException ex)
+        {
+            logger.LogWarning(ex, "Ошибка блокировки/разблокировки канала {ChannelId}", channelId.Value);
+            return Result.Fail("Не удалось изменить права доступа канала");
+        }
+    }
+
+    public async Task<Result> AssignRoleAsync(
+        GuildId guildId,
+        MemberId memberId,
+        ulong roleId,
+        string reason,
+        CancellationToken ct)
+    {
+        try
+        {
+            await rest.AddGuildUserRoleAsync(
+                guildId.Value,
+                memberId.Value,
+                roleId,
+                new RestRequestProperties { AuditLogReason = reason },
+                ct);
+            return Result.Ok();
+        }
+        catch (RestException ex)
+        {
+            logger.LogWarning(ex, "Не удалось выдать роль {RoleId} участнику {MemberId}", roleId, memberId.Value);
+            return Result.Fail("Discord отклонил выдачу роли (роль бота должна быть выше выдаваемой роли)");
+        }
+    }
+
+    public async Task<Result> RemoveRoleAsync(
+        GuildId guildId,
+        MemberId memberId,
+        ulong roleId,
+        string reason,
+        CancellationToken ct)
+    {
+        try
+        {
+            await rest.RemoveGuildUserRoleAsync(
+                guildId.Value,
+                memberId.Value,
+                roleId,
+                new RestRequestProperties { AuditLogReason = reason },
+                ct);
+            return Result.Ok();
+        }
+        catch (RestException ex)
+        {
+            logger.LogWarning(ex, "Не удалось снять роль {RoleId} у участника {MemberId}", roleId, memberId.Value);
+            return Result.Fail("Discord отклонил снятие роли");
+        }
+    }
+
+    public async Task<Result> SendAnnouncementAsync(
+        ChannelId channelId,
+        string title,
+        string message,
+        string style,
+        ulong? mentionRoleId,
+        CancellationToken ct)
+    {
+        try
+        {
+            var (color, icon) = style.ToLowerInvariant() switch
+            {
+                "warning" or "important" => (0xE74C3C, "🚨"),
+                "event" => (0x9B59B6, "🎉"),
+                "rules" => (0x2ECC71, "📜"),
+                _ => (0x5865F2, "📢")
+            };
+
+            var embed = new EmbedProperties
+            {
+                Title = $"{icon} {title}",
+                Description = message,
+                Color = new Color(color),
+                Timestamp = timeProvider.GetUtcNow(),
+                Footer = new EmbedFooterProperties { Text = "Официальное объявление администрации сервера" }
+            };
+
+            var props = new MessageProperties
+            {
+                Content = mentionRoleId.HasValue ? $"<@&{mentionRoleId.Value}>" : null,
+                Embeds = [embed]
+            };
+
+            await rest.SendMessageAsync(channelId.Value, props, cancellationToken: ct);
+            return Result.Ok();
+        }
+        catch (RestException ex)
+        {
+            logger.LogWarning(ex, "Не удалось отправить объявление в канал {ChannelId}", channelId.Value);
+            return Result.Fail("Не удалось опубликовать объявление в указанный канал");
+        }
+    }
+
+    public async Task<Result<ChannelId>> CreateQuickChannelAsync(
+        GuildId guildId,
+        string name,
+        string? categoryName,
+        string? topic,
+        bool isVoice,
+        string reason,
+        CancellationToken ct)
+    {
+        try
+        {
+            ulong? parentId = null;
+            if (!string.IsNullOrWhiteSpace(categoryName))
+            {
+                var channels = await rest.GetGuildChannelsAsync(guildId.Value, cancellationToken: ct);
+                var existingCat = channels
+                    .OfType<CategoryGuildChannel>()
+                    .FirstOrDefault(c => string.Equals(c.Name, categoryName.Trim(), StringComparison.OrdinalIgnoreCase));
+
+                if (existingCat is not null)
+                {
+                    parentId = existingCat.Id;
+                }
+                else
+                {
+                    var createdCat = await rest.CreateGuildChannelAsync(
+                        guildId.Value,
+                        new GuildChannelProperties(categoryName.Trim(), ChannelType.CategoryChannel),
+                        new RestRequestProperties { AuditLogReason = reason },
+                        ct);
+                    parentId = createdCat.Id;
+                }
+            }
+
+            var props = new GuildChannelProperties(
+                name.Trim(),
+                isVoice ? ChannelType.VoiceGuildChannel : ChannelType.TextGuildChannel)
+            {
+                ParentId = parentId,
+                Topic = topic
+            };
+
+            var created = await rest.CreateGuildChannelAsync(
+                guildId.Value,
+                props,
+                new RestRequestProperties { AuditLogReason = reason },
+                ct);
+
+            return Result.Ok(ChannelId.From(created.Id));
+        }
+        catch (RestException ex)
+        {
+            logger.LogWarning(ex, "Ошибка создания канала {ChannelName} в гильдии {GuildId}", name, guildId.Value);
+            return Result.Fail("Discord отклонил создание канала (проверьте право Manage Channels)");
         }
     }
 

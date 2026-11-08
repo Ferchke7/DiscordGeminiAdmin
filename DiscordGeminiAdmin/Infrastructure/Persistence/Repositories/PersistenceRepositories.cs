@@ -28,6 +28,8 @@ internal sealed class KnowledgeDocumentRepository(DatabaseContext db) : IKnowled
 {
     public void Add(KnowledgeDocument document) => db.KnowledgeDocuments.Add(document);
 
+    public void Remove(KnowledgeDocument document) => db.KnowledgeDocuments.Remove(document);
+
     public Task<KnowledgeDocument?> GetByRuleCodeAsync(GuildId guildId, RuleCode ruleCode, CancellationToken ct) =>
         db.KnowledgeDocuments.FirstOrDefaultAsync(x => x.GuildId == guildId && x.RuleCode == ruleCode, ct);
 
@@ -41,6 +43,14 @@ internal sealed class KnowledgeDocumentRepository(DatabaseContext db) : IKnowled
 
         return codes.Select(c => c.Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
+
+    public async Task<IReadOnlyList<KnowledgeDocument>> GetAllByGuildAsync(GuildId guildId, CancellationToken ct) =>
+        await db.KnowledgeDocuments
+            .AsNoTracking()
+            .Where(x => x.GuildId == guildId)
+            .OrderBy(x => x.SourceType)
+            .ThenBy(x => x.Title)
+            .ToListAsync(ct);
 }
 
 internal sealed class ModerationCaseRepository(DatabaseContext db) : IModerationCaseRepository
@@ -57,6 +67,29 @@ internal sealed class ModerationCaseRepository(DatabaseContext db) : IModeration
                  && x.BanSource == BanSource.Auto
                  && x.ResolvedAt >= since,
             ct);
+
+    public async Task<IReadOnlyList<ModerationCase>> GetByMemberAsync(
+        GuildId guildId,
+        MemberId memberId,
+        int limit,
+        CancellationToken ct) =>
+        await db.ModerationCases
+            .AsNoTracking()
+            .Where(x => x.GuildId == guildId && x.MemberId == memberId)
+            .OrderByDescending(x => x.OpenedAt)
+            .Take(limit)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<ModerationCase>> GetRecentByGuildAsync(
+        GuildId guildId,
+        int limit,
+        CancellationToken ct) =>
+        await db.ModerationCases
+            .AsNoTracking()
+            .Where(x => x.GuildId == guildId)
+            .OrderByDescending(x => x.OpenedAt)
+            .Take(limit)
+            .ToListAsync(ct);
 }
 
 internal sealed class BufferedMessageRepository(DatabaseContext db) : IBufferedMessageRepository
@@ -78,6 +111,20 @@ internal sealed class BufferedMessageRepository(DatabaseContext db) : IBufferedM
         await db.BufferedMessages
             .AsNoTracking()
             .Where(x => x.GuildId == guildId && x.AuthorId == authorId && x.CreatedAt >= since)
+            .OrderBy(x => x.CreatedAt)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<BufferedMessage>> GetByChannelSinceAsync(
+        GuildId guildId,
+        ChannelId channelId,
+        DateTime since,
+        int limit,
+        CancellationToken ct) =>
+        await db.BufferedMessages
+            .AsNoTracking()
+            .Where(x => x.GuildId == guildId && x.ChannelId == channelId && x.CreatedAt >= since)
+            .OrderByDescending(x => x.CreatedAt)
+            .Take(limit)
             .OrderBy(x => x.CreatedAt)
             .ToListAsync(ct);
 

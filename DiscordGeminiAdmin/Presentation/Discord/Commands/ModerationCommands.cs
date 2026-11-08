@@ -1,8 +1,10 @@
 using DiscordGeminiAdmin.Application.UseCases.Guilds.Setup;
 using DiscordGeminiAdmin.Application.UseCases.Guilds.UpdateSettings;
+using DiscordGeminiAdmin.Application.UseCases.Moderation.ChannelActions;
 using DiscordGeminiAdmin.Application.UseCases.Moderation.RunHourly;
 using DiscordGeminiAdmin.Application.UseCases.Moderation.ScanMember;
 using DiscordGeminiAdmin.Domain.Moderation;
+using DiscordGeminiAdmin.Presentation.Discord.Components;
 using DiscordGeminiAdmin.Presentation.Discord.Mapper;
 using DiscordGeminiAdmin.SharedKernel;
 using FluentResults;
@@ -13,7 +15,7 @@ using Wolverine;
 
 namespace DiscordGeminiAdmin.Presentation.Discord.Commands;
 
-[SlashCommand("mod", "Управление ИИ-модератором сервера", DefaultGuildPermissions = Permissions.ManageGuild)]
+[SlashCommand("mod", "Управление ИИ-модератором сервера и анализом чата", DefaultGuildPermissions = Permissions.ManageGuild)]
 public sealed class ModerationCommands(IMessageBus bus) : ApplicationCommandModule<ApplicationCommandContext>
 {
     [SubSlashCommand("setup", "Первичная настройка тематики сервера и канала отчётов")]
@@ -23,7 +25,7 @@ public sealed class ModerationCommands(IMessageBus bus) : ApplicationCommandModu
         [SlashCommandParameter(Description = "Dry-run режим (true = не банить реально, только писать в отчёт)")] bool dryRun = true)
     {
         if (Context.Guild is null)
-            return Ephemeral("Команда доступна только на сервере.");
+            return EmbedTheme.ErrorCard("Команда доступна только на сервере.");
 
         var result = await bus.InvokeAsync<Result>(new SetupGuild(
             GuildId.From(Context.Guild.Id),
@@ -31,9 +33,17 @@ public sealed class ModerationCommands(IMessageBus bus) : ApplicationCommandModu
             ChannelId.From(modChannel.Id),
             dryRun));
 
-        return Ephemeral(result.IsSuccess
-            ? $"Сервер настроен. Канал отчётов: <#{modChannel.Id}>, DryRun: `{dryRun}`."
-            : FormatErrors(result));
+        if (result.IsFailed)
+            return EmbedTheme.ErrorCard(result, "Ошибка настройки сервера");
+
+        return EmbedTheme.SuccessCard(
+            "ИИ-Модератор настроен для сервера",
+            "Конфигурация сохранена в базе данных. Почасовой мониторинг активен.",
+            [
+                new EmbedFieldProperties { Name = "🎯 Тематика", Value = theme, Inline = false },
+                new EmbedFieldProperties { Name = "📢 Канал модераторов", Value = $"<#{modChannel.Id}>", Inline = true },
+                new EmbedFieldProperties { Name = "🧪 Режим Dry-Run", Value = dryRun ? "`ВКЛ (безопасный тест)`" : "`ВЫКЛ (боевой авто-бан)`", Inline = true }
+            ]);
     }
 
     [SubSlashCommand("settings", "Изменить пороги автоматического бана")]
@@ -44,7 +54,7 @@ public sealed class ModerationCommands(IMessageBus bus) : ApplicationCommandModu
         [SlashCommandParameter(Description = "Режим DryRun (true/false)")] bool? dryRun = null)
     {
         if (Context.Guild is null)
-            return Ephemeral("Команда доступна только на сервере.");
+            return EmbedTheme.ErrorCard("Команда доступна только на сервере.");
 
         var result = await bus.InvokeAsync<Result<ModerationPolicy>>(new UpdateGuildSettings(
             GuildId.From(Context.Guild.Id),
@@ -54,20 +64,27 @@ public sealed class ModerationCommands(IMessageBus bus) : ApplicationCommandModu
             dryRun));
 
         if (result.IsFailed)
-            return Ephemeral(FormatErrors(result));
+            return EmbedTheme.ErrorCard(result, "Ошибка обновления политики");
 
         var p = result.Value;
-        return Ephemeral(
-            $"Настройки авто-бана: MinConfidence=`{p.MinConfidence:P0}`, MinEvidence=`{p.MinEvidenceMessages}`, MaxPerHour=`{p.MaxAutoBansPerHour}`, DryRun=`{p.DryRun}`.");
+        return EmbedTheme.SuccessCard(
+            "Политика авто-бана обновлена",
+            "Новые пороги вступили в силу для всех следующих проверок ИИ.",
+            [
+                new EmbedFieldProperties { Name = "🎯 Мин. уверенность", Value = $"`{p.MinConfidence:P0}`", Inline = true },
+                new EmbedFieldProperties { Name = "📨 Мин. доказательств", Value = $"`{p.MinEvidenceMessages}` сообщ.", Inline = true },
+                new EmbedFieldProperties { Name = "⏱️ Лимит банов/час", Value = $"`{p.MaxAutoBansPerHour}`", Inline = true },
+                new EmbedFieldProperties { Name = "🧪 Режим Dry-Run", Value = p.DryRun ? "`ВКЛ (только отчёт)`" : "`ВЫКЛ (реальный бан)`", Inline = false }
+            ]);
     }
 
-    [SubSlashCommand("scan", "Внеочередная ИИ-проверка недавних сообщений участника")]
+    [SubSlashCommand("scan", "Внеочередная ИИ-проверка недавних сообщений участника с кнопками решений")]
     public async Task ScanAsync(
         [SlashCommandParameter(Description = "Проверяемый участник")] User user)
     {
         if (Context.Guild is null)
         {
-            await RespondAsync(InteractionCallback.Message(Ephemeral("Команда доступна только на сервере.")));
+            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
             return;
         }
 
@@ -79,19 +96,36 @@ public sealed class ModerationCommands(IMessageBus bus) : ApplicationCommandModu
 
         if (result.IsFailed)
         {
-            await FollowupAsync(Ephemeral(FormatErrors(result)));
+            await FollowupAsync(EmbedTheme.ErrorCard(result, "Ошибка сканирования участника"));
             return;
         }
 
         if (result.Value is null)
         {
-            await FollowupAsync(Ephemeral($"У <@{user.Id}> не обнаружено нарушений за последние 24 часа."));
+            await FollowupAsync(EmbedTheme.SuccessCard(
+                "Нарушений не обнаружено",
+                $"За последние 24 часа у <@{user.Id}> не найдено подозрительных сообщений или нарушений правил сервера."));
             return;
         }
 
         var dto = ModerationCaseOverviewMapper.ToDto(result.Value);
-        await FollowupAsync(Ephemeral(
-            $"Кейс `{dto.Id}` для <@{dto.MemberId.Value}>: уверенность `{dto.Assessment.Confidence.Value:P0}`, правило `{dto.Assessment.Rule?.Value ?? "нет"}` — {dto.Assessment.Reason.Value}"));
+        var actionRow = new ActionRowProperties([
+            new ButtonProperties($"ban:{dto.Id}", "🔨 Бан", ButtonStyle.Danger),
+            new ButtonProperties($"kick:{dto.Id}", "👢 Кик", ButtonStyle.Primary),
+            new ButtonProperties($"timeout:{dto.Id}", "🔇 Таймаут 1ч", ButtonStyle.Secondary),
+            new ButtonProperties($"dismiss:{dto.Id}", "✅ Игнор", ButtonStyle.Success)
+        ]);
+
+        await FollowupAsync(EmbedTheme.Card(
+            $"🔍 Результат ИИ-аудита: {user.Username}",
+            $"Участник: <@{dto.MemberId.Value}>\n**Вердикт Gemini:** {dto.Assessment.Reason.Value}",
+            EmbedTheme.Warning,
+            [
+                new EmbedFieldProperties { Name = "🎯 Уверенность", Value = $"`{dto.Assessment.Confidence.Value:P0}`", Inline = true },
+                new EmbedFieldProperties { Name = "📜 Правило (RAG)", Value = $"`{dto.Assessment.Rule?.Value ?? "не указано"}`", Inline = true },
+                new EmbedFieldProperties { Name = "🆔 ID Кейса", Value = $"`{dto.Id}`", Inline = true }
+            ],
+            [actionRow]));
     }
 
     [SubSlashCommand("digest-now", "Запустить часовой прогон ИИ-модерации прямо сейчас")]
@@ -99,7 +133,7 @@ public sealed class ModerationCommands(IMessageBus bus) : ApplicationCommandModu
     {
         if (Context.Guild is null)
         {
-            await RespondAsync(InteractionCallback.Message(Ephemeral("Команда доступна только на сервере.")));
+            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
             return;
         }
 
@@ -110,18 +144,49 @@ public sealed class ModerationCommands(IMessageBus bus) : ApplicationCommandModu
 
         if (result.IsFailed)
         {
-            await FollowupAsync(Ephemeral(FormatErrors(result)));
+            await FollowupAsync(EmbedTheme.ErrorCard(result, "Ошибка часового прогона"));
             return;
         }
 
         var s = result.Value;
-        await FollowupAsync(Ephemeral(
-            $"Часовой прогон завершён. Открыто кейсов: `{s.CasesOpened}`, авто-банов: `{s.AutoBannedCount}`, дайджест: `{s.DigestId?.ToString() ?? "не требовался"}`."));
+        await FollowupAsync(EmbedTheme.SuccessCard(
+            "Часовой ИИ-прогон завершён",
+            "Все накопленные сообщения проанализированы через Gemini и сопоставлены с RAG-базой.",
+            [
+                new EmbedFieldProperties { Name = "📂 Открыто кейсов", Value = $"`{s.CasesOpened}`", Inline = true },
+                new EmbedFieldProperties { Name = "🔨 Авто-банов", Value = $"`{s.AutoBannedCount}`", Inline = true },
+                new EmbedFieldProperties { Name = "📊 Дайджест в мод-канале", Value = $"`{s.DigestId?.ToString() ?? "не требовался (нарушений нет)"}`", Inline = false }
+            ]));
     }
 
-    private static InteractionMessageProperties Ephemeral(string text) =>
-        new() { Content = text, Flags = MessageFlags.Ephemeral };
+    [SubSlashCommand("summarize", "Сделать ИИ-выжимку (саммари) обсуждений в текущем канале")]
+    public async Task SummarizeAsync(
+        [SlashCommandParameter(Description = "За сколько последних часов проанализировать переписку (1..48)")] int hours = 12)
+    {
+        if (Context.Guild is null)
+        {
+            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+            return;
+        }
 
-    private static string FormatErrors(ResultBase result) =>
-        string.Join("; ", result.Errors.Select(e => e.Message));
+        await RespondAsync(InteractionCallback.DeferredMessage(MessageFlags.Ephemeral));
+
+        var channelName = (Context.Channel as IGuildChannel)?.Name ?? Context.Channel.Id.ToString();
+        var result = await bus.InvokeAsync<Result<string>>(new SummarizeChannelMessages(
+            GuildId.From(Context.Guild.Id),
+            ChannelId.From(Context.Channel.Id),
+            channelName,
+            hours));
+
+        if (result.IsFailed)
+        {
+            await FollowupAsync(EmbedTheme.ErrorCard(result, "Ошибка генерации саммари"));
+            return;
+        }
+
+        await FollowupAsync(EmbedTheme.Card(
+            $"📝 ИИ-выжимка канала #{channelName} (за {Math.Clamp(hours, 1, 48)} ч.)",
+            result.Value,
+            EmbedTheme.Purple));
+    }
 }

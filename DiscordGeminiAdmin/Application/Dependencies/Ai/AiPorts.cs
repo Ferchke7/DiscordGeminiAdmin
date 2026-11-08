@@ -28,7 +28,7 @@ public sealed record MemberAssessmentDto(
 
 public sealed record KnowledgeAnswerDto(string Answer, IReadOnlyList<string> CitedRuleCodes);
 
-/// <summary>Порт ИИ для модерации сообщений и ответов по базе знаний (Gemini).</summary>
+/// <summary>Порт ИИ для модерации сообщений, саммари чата и ответов по базе знаний (Gemini).</summary>
 public interface IModerationAi
 {
     Task<Result<IReadOnlyList<MemberAssessmentDto>>> AssessBatchAsync(
@@ -39,6 +39,12 @@ public interface IModerationAi
         string serverTheme,
         string question,
         IReadOnlyList<KnowledgeHitDto> retrievedChunks,
+        CancellationToken ct);
+
+    Task<Result<string>> SummarizeChannelAsync(
+        string serverTheme,
+        string channelName,
+        IReadOnlyList<string> formattedMessages,
         CancellationToken ct);
 }
 
