@@ -10,7 +10,7 @@ namespace DiscordGeminiAdmin.Application.UseCases.Knowledge.Manage;
 public sealed record ListKnowledgeDocuments(GuildId GuildId);
 public sealed record DeleteKnowledgeDocument(GuildId GuildId, string RuleCode);
 
-internal sealed class ManageKnowledgeUseCase(
+public sealed class ManageKnowledgeUseCase(
     IKnowledgeDocumentRepository documents,
     IKnowledgeIndex knowledgeIndex,
     IUnitOfWork unitOfWork)

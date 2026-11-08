@@ -60,7 +60,7 @@ public sealed record SummarizeChannelMessages(
     string ChannelName,
     int Hours);
 
-internal sealed class ChannelAdminUseCase(
+public sealed class ChannelAdminUseCase(
     IGuildGateway guildGateway,
     IDiscordNotifier notifier,
     IGuildProfileRepository guildProfiles,

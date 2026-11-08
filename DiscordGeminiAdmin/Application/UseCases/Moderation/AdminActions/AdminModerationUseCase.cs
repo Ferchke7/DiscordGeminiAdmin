@@ -32,7 +32,7 @@ public sealed record GuildDashboardReport(
 
 public sealed record GetGuildDashboard(GuildId GuildId);
 
-internal sealed class AdminModerationUseCase(
+public sealed class AdminModerationUseCase(
     IGuildGateway guildGateway,
     IDiscordNotifier notifier,
     IGuildProfileRepository guildProfiles,
