@@ -11,7 +11,7 @@ using Wolverine;
 
 namespace DiscordGeminiAdmin.Presentation.Discord.Commands;
 
-[SlashCommand("organize", "ИИ-организатор структуры Discord-сервера и каналов по тематике", DefaultGuildPermissions = Permissions.ManageGuild)]
+[SlashCommand("organize", "ИИ-организатор структуры Discord-сервера и каналов по тематике")]
 public sealed class OrganizeCommands(IMessageBus bus) : ApplicationCommandModule<ApplicationCommandContext>
 {
     [SubSlashCommand("analyze", "Проанализировать сервер через ИИ и предложить план улучшения каналов/категорий/ролей")]

@@ -17,7 +17,7 @@ using Wolverine;
 
 namespace DiscordGeminiAdmin.Presentation.Discord.Commands;
 
-[SlashCommand("mod", "Управление ИИ-модератором сервера и анализом чата", DefaultGuildPermissions = Permissions.ManageGuild)]
+[SlashCommand("mod", "Управление ИИ-модератором сервера и анализом чата")]
 public sealed class ModerationCommands(IMessageBus bus) : ApplicationCommandModule<ApplicationCommandContext>
 {
     [SubSlashCommand("setup", "Первичная настройка тематики сервера и канала отчётов")]
@@ -193,7 +193,7 @@ public sealed class ModerationCommands(IMessageBus bus) : ApplicationCommandModu
     }
 }
 
-[SlashCommand("mod-config", "Быстрая настройка тематики и каналов ИИ-модератора", DefaultGuildPermissions = Permissions.ManageGuild)]
+[SlashCommand("mod-config", "Быстрая настройка тематики и каналов ИИ-модератора")]
 public sealed class ModConfigCommands(IMessageBus bus) : ApplicationCommandModule<ApplicationCommandContext>
 {
     [SubSlashCommand("set-theme", "Задать тематику и подробное описание сообщества для ИИ и организатора")]

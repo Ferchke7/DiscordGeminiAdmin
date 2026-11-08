@@ -12,7 +12,7 @@ using Wolverine;
 
 namespace DiscordGeminiAdmin.Presentation.Discord.Commands;
 
-[SlashCommand("admin", "Классические команды администратора и ручной модерации", DefaultGuildPermissions = Permissions.ModerateUsers)]
+[SlashCommand("admin", "Классические команды администратора и ручной модерации")]
 public sealed class AdminCommands(IMessageBus bus) : ApplicationCommandModule<ApplicationCommandContext>
 {
     [SubSlashCommand("ban", "Забанить участника на сервере с записью в журнал и кнопкой разбана")]
@@ -511,5 +511,72 @@ public sealed class AdminCommands(IMessageBus bus) : ApplicationCommandModule<Ap
         await FollowupAsync(EmbedTheme.SuccessCard(
             "Роль снята",
             $"С участника <@{user.Id}> снята роль <@&{role.Id}>."));
+    }
+}
+
+public sealed class LegacyCodeGuruCommands(IMessageBus bus) : ApplicationCommandModule<ApplicationCommandContext>
+{
+    [SlashCommand("remove-messages-user", "Удалить все сообщения пользователя")]
+    public async Task RemoveMessagesUserAsync(
+        [SlashCommandParameter(Description = "Пользователь, чьи сообщения нужно удалить")] User user,
+        [SlashCommandParameter(Description = "Максимум проверяемых сообщений (1..100)")] int count = 100)
+    {
+        if (Context.Guild is null)
+        {
+            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+            return;
+        }
+
+        await RespondAsync(InteractionCallback.DeferredMessage(MessageFlags.Ephemeral));
+
+        var result = await bus.InvokeAsync<Result<int>>(new PurgeChannelMessages(
+            GuildId.From(Context.Guild.Id),
+            ChannelId.From(Context.Channel.Id),
+            MemberId.From(Context.User.Id),
+            count,
+            MemberId.From(user.Id),
+            $"Удаление сообщений пользователя {user.Username}"));
+
+        if (result.IsFailed)
+        {
+            await FollowupAsync(EmbedTheme.ErrorCard(result, "Ошибка удаления сообщений"));
+            return;
+        }
+
+        await FollowupAsync(EmbedTheme.SuccessCard(
+            "Сообщения пользователя удалены",
+            $"Удалено сообщений от <@{user.Id}> в <#{Context.Channel.Id}>: **`{result.Value}`**."));
+    }
+
+    [SlashCommand("remove-messages-after", "Удалить все сообщения после указанного времени")]
+    public async Task RemoveMessagesAfterAsync(
+        [SlashCommandParameter(Description = "Количество последних сообщений для очистки (1..100)")] int count = 50,
+        [SlashCommandParameter(Description = "Причина очистки")] string reason = "Очистка сообщений после указанного времени")
+    {
+        if (Context.Guild is null)
+        {
+            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+            return;
+        }
+
+        await RespondAsync(InteractionCallback.DeferredMessage(MessageFlags.Ephemeral));
+
+        var result = await bus.InvokeAsync<Result<int>>(new PurgeChannelMessages(
+            GuildId.From(Context.Guild.Id),
+            ChannelId.From(Context.Channel.Id),
+            MemberId.From(Context.User.Id),
+            count,
+             null,
+            reason));
+
+        if (result.IsFailed)
+        {
+            await FollowupAsync(EmbedTheme.ErrorCard(result, "Ошибка удаления сообщений"));
+            return;
+        }
+
+        await FollowupAsync(EmbedTheme.SuccessCard(
+            "Сообщения удалены",
+            $"Удалено последних сообщений в <#{Context.Channel.Id}>: **`{result.Value}`**."));
     }
 }

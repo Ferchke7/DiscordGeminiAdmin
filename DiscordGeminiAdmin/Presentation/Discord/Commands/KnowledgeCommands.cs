@@ -15,7 +15,7 @@ using Wolverine;
 
 namespace DiscordGeminiAdmin.Presentation.Discord.Commands;
 
-[SlashCommand("kb", "Управление векторной RAG-базой знаний сервера (pgvector)", DefaultGuildPermissions = Permissions.ManageGuild)]
+[SlashCommand("kb", "Управление векторной RAG-базой знаний сервера (pgvector)")]
 public sealed class KnowledgeCommands(IMessageBus bus) : ApplicationCommandModule<ApplicationCommandContext>
 {
     [SubSlashCommand("add", "Добавить или обновить правило/раздел в RAG-базе сервера")]
