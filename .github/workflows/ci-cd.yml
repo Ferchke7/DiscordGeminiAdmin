@@ -111,7 +111,7 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           install -m 600 /dev/null ~/.ssh/id_dga_deploy
-          printf '%s\n' "${VPS_SSH_KEY}" > ~/.ssh/id_dga_deploy
+          printf '%s\n' "${VPS_SSH_KEY}" | tr -d '\r' > ~/.ssh/id_dga_deploy
           ssh-keyscan -p "${VPS_PORT}" "${VPS_HOST}" >> ~/.ssh/known_hosts
 
       - name: Create production .env file
