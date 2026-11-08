@@ -56,7 +56,7 @@ internal sealed class NetCordDiscordNotifier(
         catch (RestException ex)
         {
             logger.LogWarning(ex, "Не удалось отправить карточку авто-бана в канал {ChannelId}", modChannelId.Value);
-            return Result.Fail("Не удалось опубликовать карточку авто-бана");
+            return Result.Fail($"Не удалось опубликовать карточку авто-бана: {ex.Message}");
         }
     }
 
@@ -112,7 +112,7 @@ internal sealed class NetCordDiscordNotifier(
         catch (RestException ex)
         {
             logger.LogWarning(ex, "Не удалось отправить часовой дайджест в канал {ChannelId}", modChannelId.Value);
-            return Result.Fail("Не удалось отправить часовой дайджест в Discord");
+            return Result.Fail($"Не удалось отправить часовой дайджест в Discord: {ex.Message}");
         }
     }
 
@@ -182,7 +182,7 @@ internal sealed class NetCordDiscordNotifier(
         catch (RestException ex)
         {
             logger.LogWarning(ex, "Не удалось отправить план структуры в канал {ChannelId}", modChannelId.Value);
-            return Result.Fail("Не удалось отправить план структуры в Discord");
+            return Result.Fail($"Не удалось отправить план структуры в Discord: {ex.Message}");
         }
     }
 
@@ -246,7 +246,7 @@ internal sealed class NetCordDiscordNotifier(
         catch (RestException ex)
         {
             logger.LogWarning(ex, "Не удалось отправить лог админ-действия в канал {ChannelId}", modChannelId.Value);
-            return Result.Fail("Не удалось записать событие в мод-канал");
+            return Result.Fail($"Не удалось записать событие в мод-канал: {ex.Message}");
         }
     }
 }

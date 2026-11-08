@@ -65,8 +65,8 @@ public sealed class InfoCommands(IMessageBus bus) : ApplicationCommandModule<App
                 {
                     Name = "🧠 Модели Gemini & RAG",
                     Value = $"""
-                        • **Модерация:** `gemini-2.5-flash`
-                        • **Архитектор:** `gemini-2.5-pro`
+                        • **Модерация:** `gemini-3.8-flash`
+                        • **Архитектор:** `gemini-3.8-flash`
                         • **RAG Векторы:** `pgvector (768d)`
                         • **Документов в RAG:** `{rulesCount}`
                         """,

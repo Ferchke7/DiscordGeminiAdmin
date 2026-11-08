@@ -43,7 +43,7 @@ internal sealed class GeminiEmbeddingService(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Ошибка получения эмбеддинга от Gemini (taskType={TaskType})", taskType);
-            return Result.Fail("Не удалось вычислить эмбеддинг через Gemini");
+            return Result.Fail($"Не удалось вычислить эмбеддинг через Gemini ({settings.Models.Embedding}): {ex.Message}");
         }
     }
 }

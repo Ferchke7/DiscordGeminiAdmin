@@ -82,7 +82,7 @@ internal sealed class GeminiStructureAdvisorAi(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Ошибка генерации плана структуры для гильдии {GuildId}", context.GuildId.Value);
-            return Result.Fail("Не удалось сгенерировать план структуры через Gemini");
+            return Result.Fail($"Не удалось сгенерировать план структуры через Gemini ({model}): {ex.Message}");
         }
     }
 

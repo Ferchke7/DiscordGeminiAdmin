@@ -126,8 +126,8 @@ jobs:
           POSTGRES_PORT: ${{ vars.POSTGRES_PORT || '5444' }}
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODERATION_MODEL: ${{ vars.GEMINI_MODERATION_MODEL || 'gemini-2.5-flash' }}
-          GEMINI_STRUCTURE_MODEL: ${{ vars.GEMINI_STRUCTURE_MODEL || 'gemini-2.5-pro' }}
+          GEMINI_MODERATION_MODEL: ${{ vars.GEMINI_MODERATION_MODEL || 'gemini-3.8-flash' }}
+          GEMINI_STRUCTURE_MODEL: ${{ vars.GEMINI_STRUCTURE_MODEL || 'gemini-3.8-flash' }}
           GEMINI_EMBEDDING_MODEL: ${{ vars.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001' }}
           GEMINI_EMBEDDING_DIMENSIONS: ${{ vars.GEMINI_EMBEDDING_DIMENSIONS || '768' }}
           AUTOBAN_ENABLED: ${{ vars.AUTOBAN_ENABLED || 'true' }}

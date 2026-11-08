@@ -45,7 +45,7 @@ internal sealed class NetCordGuildGateway(
         catch (RestException ex)
         {
             logger.LogWarning(ex, "Не удалось получить профиль участника {MemberId}", memberId.Value);
-            return Result.Fail("Не удалось получить участника из Discord");
+            return Result.Fail($"Не удалось получить участника из Discord: {ex.Message}");
         }
     }
 
@@ -64,7 +64,7 @@ internal sealed class NetCordGuildGateway(
         catch (RestException ex)
         {
             logger.LogWarning(ex, "Discord отклонил бан {MemberId}", memberId.Value);
-            return Result.Fail("Discord отклонил бан (проверьте права и иерархию ролей бота)");
+            return Result.Fail($"Discord отклонил бан (проверьте права и иерархию ролей бота): {ex.Message}");
         }
     }
 
@@ -82,7 +82,7 @@ internal sealed class NetCordGuildGateway(
         catch (RestException ex)
         {
             logger.LogWarning(ex, "Discord отклонил разбан {MemberId}", memberId.Value);
-            return Result.Fail("Discord отклонил разбан (возможно, пользователь не в бане)");
+            return Result.Fail($"Discord отклонил разбан (возможно, пользователь не в бане): {ex.Message}");
         }
     }
 
@@ -100,7 +100,7 @@ internal sealed class NetCordGuildGateway(
         catch (RestException ex)
         {
             logger.LogWarning(ex, "Discord отклонил кик {MemberId}", memberId.Value);
-            return Result.Fail("Discord отклонил кик (проверьте иерархию ролей бота)");
+            return Result.Fail($"Discord отклонил кик (проверьте иерархию ролей бота): {ex.Message}");
         }
     }
 
@@ -125,7 +125,7 @@ internal sealed class NetCordGuildGateway(
         catch (RestException ex)
         {
             logger.LogWarning(ex, "Discord отклонил таймаут {MemberId}", memberId.Value);
-            return Result.Fail("Discord отклонил таймаут (проверьте права Moderate Members)");
+            return Result.Fail($"Discord отклонил таймаут (проверьте права Moderate Members): {ex.Message}");
         }
     }
 
@@ -148,7 +148,7 @@ internal sealed class NetCordGuildGateway(
         catch (RestException ex)
         {
             logger.LogWarning(ex, "Discord отклонил снятие таймаута {MemberId}", memberId.Value);
-            return Result.Fail("Discord отклонил снятие таймаута");
+            return Result.Fail($"Discord отклонил снятие таймаута: {ex.Message}");
         }
     }
 
@@ -195,7 +195,7 @@ internal sealed class NetCordGuildGateway(
         catch (RestException ex)
         {
             logger.LogWarning(ex, "Ошибка очистки сообщений в канале {ChannelId}", channelId.Value);
-            return Result.Fail("Discord отклонил удаление сообщений (проверьте право Manage Messages)");
+            return Result.Fail($"Discord отклонил удаление сообщений (проверьте право Manage Messages): {ex.Message}");
         }
     }
 
@@ -217,7 +217,7 @@ internal sealed class NetCordGuildGateway(
         catch (RestException ex)
         {
             logger.LogWarning(ex, "Ошибка установки slowmode в канале {ChannelId}", channelId.Value);
-            return Result.Fail("Не удалось изменить медленный режим канала");
+            return Result.Fail($"Не удалось изменить медленный режим канала: {ex.Message}");
         }
     }
 
@@ -260,7 +260,7 @@ internal sealed class NetCordGuildGateway(
         catch (RestException ex)
         {
             logger.LogWarning(ex, "Ошибка блокировки/разблокировки канала {ChannelId}", channelId.Value);
-            return Result.Fail("Не удалось изменить права доступа канала");
+            return Result.Fail($"Не удалось изменить права доступа канала: {ex.Message}");
         }
     }
 
@@ -284,7 +284,7 @@ internal sealed class NetCordGuildGateway(
         catch (RestException ex)
         {
             logger.LogWarning(ex, "Не удалось выдать роль {RoleId} участнику {MemberId}", roleId, memberId.Value);
-            return Result.Fail("Discord отклонил выдачу роли (роль бота должна быть выше выдаваемой роли)");
+            return Result.Fail($"Discord отклонил выдачу роли (роль бота должна быть выше выдаваемой роли): {ex.Message}");
         }
     }
 
@@ -308,7 +308,7 @@ internal sealed class NetCordGuildGateway(
         catch (RestException ex)
         {
             logger.LogWarning(ex, "Не удалось снять роль {RoleId} у участника {MemberId}", roleId, memberId.Value);
-            return Result.Fail("Discord отклонил снятие роли");
+            return Result.Fail($"Discord отклонил снятие роли: {ex.Message}");
         }
     }
 
@@ -351,7 +351,7 @@ internal sealed class NetCordGuildGateway(
         catch (RestException ex)
         {
             logger.LogWarning(ex, "Не удалось отправить объявление в канал {ChannelId}", channelId.Value);
-            return Result.Fail("Не удалось опубликовать объявление в указанный канал");
+            return Result.Fail($"Не удалось опубликовать объявление в указанный канал: {ex.Message}");
         }
     }
 
@@ -408,7 +408,7 @@ internal sealed class NetCordGuildGateway(
         catch (RestException ex)
         {
             logger.LogWarning(ex, "Ошибка создания канала {ChannelName} в гильдии {GuildId}", name, guildId.Value);
-            return Result.Fail("Discord отклонил создание канала (проверьте право Manage Channels)");
+            return Result.Fail($"Discord отклонил создание канала (проверьте право Manage Channels): {ex.Message}");
         }
     }
 
@@ -460,7 +460,7 @@ internal sealed class NetCordGuildGateway(
         catch (RestException ex)
         {
             logger.LogWarning(ex, "Не удалось получить структуру гильдии {GuildId}", guildId.Value);
-            return Result.Fail("Не удалось загрузить структуру сервера из Discord");
+            return Result.Fail($"Не удалось загрузить структуру сервера из Discord: {ex.Message}");
         }
     }
 
@@ -556,7 +556,7 @@ internal sealed class NetCordGuildGateway(
         catch (RestException ex)
         {
             logger.LogWarning(ex, "Ошибка применения плана структуры для гильдии {GuildId}", guildId.Value);
-            return Result.Fail("Discord отклонил одно из изменений структуры");
+            return Result.Fail($"Discord отклонил одно из изменений структуры: {ex.Message}");
         }
     }
 }

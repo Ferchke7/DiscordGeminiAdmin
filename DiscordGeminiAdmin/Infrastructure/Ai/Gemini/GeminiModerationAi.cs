@@ -101,7 +101,7 @@ internal sealed class GeminiModerationAi(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Ошибка вызова Gemini при оценке батча гильдии {GuildId}", context.GuildId.Value);
-            return Result.Fail("Ошибка обращения к Gemini для анализа сообщений");
+            return Result.Fail($"Ошибка обращения к Gemini ({model}): {ex.Message}");
         }
     }
 
@@ -151,7 +151,7 @@ internal sealed class GeminiModerationAi(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Ошибка ответа по базе знаний через Gemini");
-            return Result.Fail("Не удалось получить ответ от ИИ");
+            return Result.Fail($"Ошибка Gemini API ({model}): {ex.Message}");
         }
     }
 
@@ -200,7 +200,7 @@ internal sealed class GeminiModerationAi(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Ошибка генерации саммари канала #{Channel}", channelName);
-            return Result.Fail("Не удалось сформировать ИИ-саммари переписки");
+            return Result.Fail($"Не удалось сформировать ИИ-саммари переписки ({model}): {ex.Message}");
         }
     }
 
