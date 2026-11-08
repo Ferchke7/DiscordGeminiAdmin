@@ -73,6 +73,16 @@ public sealed partial class MessageCreateGatewayHandler(
         catch (Exception ex)
         {
             logger.LogError(ex, "Ошибка обработки текстовой команды в канале {ChannelId}", message.ChannelId);
+            try
+            {
+                var errCard = EmbedTheme.ExceptionCard(ex, "Ошибка выполнения текстовой команды");
+                await restClient.SendMessageAsync(message.ChannelId, EmbedTheme.ToChannelMessage(errCard));
+            }
+            catch (Exception sendEx)
+            {
+                logger.LogWarning(sendEx, "Не удалось отправить отчёт об ошибке в канал {ChannelId}", message.ChannelId);
+            }
+            return;
         }
 
         await bus.InvokeAsync<Result>(new IngestMessage(

@@ -1,8 +1,10 @@
+using DiscordGeminiAdmin.Presentation.Discord.Events;
 using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
 using NetCord.Hosting.Services;
 using NetCord.Hosting.Services.ApplicationCommands;
 using NetCord.Hosting.Services.ComponentInteractions;
+using NetCord.Services.ApplicationCommands;
 using NetCord.Services.ComponentInteractions;
 
 namespace DiscordGeminiAdmin.Presentation.Discord;
@@ -22,12 +24,17 @@ public static class DependencyInjection
                                   | GatewayIntents.GuildUsers
                                   | GatewayIntents.GuildModeration;
             });
+            var errorHandler = new DiscordErrorResultHandler();
             services.AddApplicationCommands(options =>
             {
                 // Регистрируем команды мгновенно на уровне гильдий через GuildCommandSyncGatewayHandler
                 options.AutoRegisterCommands = false;
+                options.ResultHandler = errorHandler;
             });
-            services.AddComponentInteractions<NetCord.ButtonInteraction, ButtonInteractionContext>();
+            services.AddComponentInteractions<NetCord.ButtonInteraction, ButtonInteractionContext>(options =>
+            {
+                options.ResultHandler = errorHandler;
+            });
             services.AddGatewayHandlers(typeof(DependencyInjection).Assembly);
             return services;
         }
