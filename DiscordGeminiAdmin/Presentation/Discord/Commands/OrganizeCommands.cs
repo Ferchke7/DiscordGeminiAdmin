@@ -161,7 +161,8 @@ public sealed class OrganizeCommands(IMessageBus bus) : ApplicationCommandModule
             GuildId.From(Context.Guild.Id),
             Goal: goal,
             FallbackChannelId: ChannelId.From(Context.Channel.Id),
-            ApplyImmediately: true));
+            ApplyImmediately: true,
+            IncludeChannelHistory: true));
 
         if (result.IsFailed)
         {

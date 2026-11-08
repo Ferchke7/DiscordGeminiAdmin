@@ -17,7 +17,8 @@ public sealed record AnalyzeGuildStructure(
     string? Goal,
     ChannelId? FallbackChannelId = null,
     bool ApplyImmediately = false,
-    string? NewTheme = null);
+    string? NewTheme = null,
+    bool IncludeChannelHistory = false);
 
 public static class AnalyzeGuildStructureUseCase
 {
@@ -66,9 +67,10 @@ public static class AnalyzeGuildStructureUseCase
         var knowledge = await knowledgeIndex.GetRulesAndPrecedentsAsync(command.GuildId, 20, cancellationToken);
 
         IReadOnlyList<string>? recentHistory = null;
-        if (command.FallbackChannelId is { } historyChannelId)
+        var wantsHistory = command.IncludeChannelHistory || ContainsHistoryKeywords(command.Goal);
+        if (wantsHistory && command.FallbackChannelId is { } historyChannelId)
         {
-            var historyRes = await gateway.GetRecentChannelHistoryAsync(historyChannelId, 60, cancellationToken);
+            var historyRes = await gateway.GetRecentChannelHistoryAsync(historyChannelId, 35, cancellationToken);
             if (historyRes.IsSuccess)
                 recentHistory = historyRes.Value;
         }
@@ -129,5 +131,24 @@ public static class AnalyzeGuildStructureUseCase
         await unitOfWork.SaveAsync(cancellationToken);
         await notifier.SendStructureProposalAsync(targetChannelId, proposal, cancellationToken);
         return Result.Ok(proposal);
+    }
+
+    private static bool ContainsHistoryKeywords(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+
+        var lower = text.ToLowerInvariant();
+        return lower.Contains("истори")
+               || lower.Contains("чат")
+               || lower.Contains("переписк")
+               || lower.Contains("писал")
+               || lower.Contains("говорил")
+               || lower.Contains("обсужд")
+               || lower.Contains("саммари")
+               || lower.Contains("сводк")
+               || lower.Contains("выжимк")
+               || lower.Contains("выше")
+               || lower.Contains("ранее");
     }
 }

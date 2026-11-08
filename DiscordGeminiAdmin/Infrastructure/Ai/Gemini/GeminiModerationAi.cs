@@ -92,7 +92,8 @@ internal sealed class GeminiModerationAi(
                     SystemInstruction = new Content { Parts = [new Part { Text = ModerationSystemPrompt }] },
                     Temperature = 0.0f,
                     ResponseMimeType = "application/json",
-                    ResponseSchema = AssessmentArraySchema
+                    ResponseSchema = AssessmentArraySchema,
+                    ThinkingConfig = new ThinkingConfig { ThinkingBudget = 0 }
                 });
 
             var rawJson = response.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text;
@@ -135,7 +136,8 @@ internal sealed class GeminiModerationAi(
                     SystemInstruction = new Content { Parts = [new Part { Text = KnowledgeSystemPrompt }] },
                     Temperature = 0.1f,
                     ResponseMimeType = "application/json",
-                    ResponseSchema = KnowledgeAnswerSchema
+                    ResponseSchema = KnowledgeAnswerSchema,
+                    ThinkingConfig = new ThinkingConfig { ThinkingBudget = 0 }
                 });
 
             var rawJson = response.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text;

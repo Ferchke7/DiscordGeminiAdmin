@@ -90,7 +90,8 @@ internal sealed class GeminiStructureAdvisorAi(
                     SystemInstruction = new Content { Parts = [new Part { Text = SystemPrompt }] },
                     Temperature = 0.2f,
                     ResponseMimeType = "application/json",
-                    ResponseSchema = AdviceSchema
+                    ResponseSchema = AdviceSchema,
+                    ThinkingConfig = new ThinkingConfig { ThinkingBudget = 0 }
                 });
 
             var rawJson = response.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text;
