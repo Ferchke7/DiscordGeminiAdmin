@@ -1,44 +1,50 @@
 services:
-  postgres:
+  dga-db:
     image: pgvector/pgvector:pg17
+    container_name: dga-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-dga}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dga}
       POSTGRES_DB: ${POSTGRES_DB:-discord_gemini_admin}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5444}:5432"
     volumes:
-      - dga-pg:/var/lib/postgresql/data
+      - dga-postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dga} -d ${POSTGRES_DB:-discord_gemini_admin}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
-  bot:
+  dga-bot:
+    image: ${IMAGE_NAME:-ghcr.io/ferchke7/discordgeminiadmin}:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: dga-bot
     restart: unless-stopped
     depends_on:
-      postgres:
+      dga-db:
         condition: service_healthy
+    env_file:
+      - .env
     environment:
-      ConnectionStrings__DefaultConnection: ${ConnectionStrings__DefaultConnection:-Host=postgres;Port=5432;Database=${POSTGRES_DB:-discord_gemini_admin};Username=${POSTGRES_USER:-dga};Password=${POSTGRES_PASSWORD:-dga}}
-      Discord__Token: ${Discord__Token}
-      Gemini__ApiKey: ${Gemini__ApiKey}
-      Gemini__Models__Moderation: ${Gemini__Models__Moderation:-gemini-2.5-flash}
-      Gemini__Models__Structure: ${Gemini__Models__Structure:-gemini-2.5-pro}
-      Gemini__Models__Embedding: ${Gemini__Models__Embedding:-text-embedding-004}
-      Gemini__EmbeddingDimensions: ${Gemini__EmbeddingDimensions:-768}
-      AutoBan__Enabled: ${AutoBan__Enabled:-true}
-      AutoBan__DryRun: ${AutoBan__DryRun:-true}
-      AutoBan__MinConfidence: ${AutoBan__MinConfidence:-0.95}
-      AutoBan__MinEvidenceMessages: ${AutoBan__MinEvidenceMessages:-3}
-      AutoBan__MaxPerHour: ${AutoBan__MaxPerHour:-3}
-      Digest__Cron: ${Digest__Cron:-0 * * * *}
-      Retention__MessageBufferHours: ${Retention__MessageBufferHours:-24}
+      DOTNET_ENVIRONMENT: ${DOTNET_ENVIRONMENT:-Production}
+      ConnectionStrings__DefaultConnection: ${ConnectionStrings__DefaultConnection:-Host=dga-db;Port=5432;Database=${POSTGRES_DB:-discord_gemini_admin};Username=${POSTGRES_USER:-dga};Password=${POSTGRES_PASSWORD:-dga}}
+      Discord__Token: ${Discord__Token:-${DISCORD_TOKEN:-}}
+      Gemini__ApiKey: ${Gemini__ApiKey:-${GEMINI_API_KEY:-}}
+      Gemini__Models__Moderation: ${Gemini__Models__Moderation:-${GEMINI_MODERATION_MODEL:-gemini-2.5-flash}}
+      Gemini__Models__Structure: ${Gemini__Models__Structure:-${GEMINI_STRUCTURE_MODEL:-gemini-2.5-pro}}
+      Gemini__Models__Embedding: ${Gemini__Models__Embedding:-${GEMINI_EMBEDDING_MODEL:-gemini-embedding-001}}
+      Gemini__EmbeddingDimensions: ${Gemini__EmbeddingDimensions:-${GEMINI_EMBEDDING_DIMENSIONS:-768}}
+      AutoBan__Enabled: ${AutoBan__Enabled:-${AUTOBAN_ENABLED:-true}}
+      AutoBan__DryRun: ${AutoBan__DryRun:-${AUTOBAN_DRY_RUN:-true}}
+      AutoBan__MinConfidence: ${AutoBan__MinConfidence:-${AUTOBAN_MIN_CONFIDENCE:-0.95}}
+      AutoBan__MinEvidenceMessages: ${AutoBan__MinEvidenceMessages:-${AUTOBAN_MIN_EVIDENCE:-2}}
+      AutoBan__MaxPerHour: ${AutoBan__MaxPerHour:-${AUTOBAN_MAX_PER_HOUR:-3}}
+      Digest__Cron: ${Digest__Cron:-${DIGEST_CRON:-0 * * * *}}
+      Retention__MessageBufferHours: ${Retention__MessageBufferHours:-${RETENTION_HOURS:-48}}
 
 volumes:
-  dga-pg:
+  dga-postgres-data:
