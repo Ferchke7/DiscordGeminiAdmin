@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/Analyzer/">
+    <Project Path="Analyzer/DGA.Analyzer.Tests/DGA.Analyzer.Tests.csproj" />
+    <Project Path="Analyzer/DGA.Analyzer/DGA.Analyzer.csproj" />
+  </Folder>
+  <Project Path="DiscordGeminiAdmin.Tests/DiscordGeminiAdmin.Tests.csproj" />
+  <Project Path="DiscordGeminiAdmin/DiscordGeminiAdmin.csproj" />
+</Solution>

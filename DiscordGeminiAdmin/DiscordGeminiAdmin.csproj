@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <RootNamespace>DiscordGeminiAdmin</RootNamespace>
+        <UserSecretsId>discord-gemini-admin</UserSecretsId>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="EFCore.NamingConventions" />
+        <PackageReference Include="FluentResults" />
+        <PackageReference Include="Google.GenAI" />
+        <PackageReference Include="Hangfire" />
+        <PackageReference Include="Hangfire.PostgreSql" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Tools">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+        <PackageReference Include="NetCord.Hosting" />
+        <PackageReference Include="NetCord.Hosting.Services" />
+        <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+        <PackageReference Include="Pgvector.EntityFrameworkCore" />
+        <PackageReference Include="Riok.Mapperly" />
+        <PackageReference Include="Serilog.Extensions.Hosting" />
+        <PackageReference Include="Serilog.Settings.Configuration" />
+        <PackageReference Include="Serilog.Sinks.Console" />
+        <PackageReference Include="Vogen" />
+        <PackageReference Include="WolverineFx" />
+        <PackageReference Include="WolverineFx.EntityFrameworkCore" />
+        <PackageReference Include="WolverineFx.Postgresql" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Analyzer\DGA.Analyzer\DGA.Analyzer.csproj"
+                          OutputItemType="Analyzer"
+                          ReferenceOutputAssembly="false" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="DiscordGeminiAdmin.Tests" />
+    </ItemGroup>
+
+</Project>

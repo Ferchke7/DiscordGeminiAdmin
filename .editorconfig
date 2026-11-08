@@ -1,0 +1,20 @@
+# .editorconfig
+root = true
+
+[*.cs]
+dotnet_sort_system_directives_first = true
+
+# Чистая архитектура: ключ = слой (сегмент namespace), значение = слои/namespace, от которых он НЕ должен зависеть.
+dotnet_diagnostic.DGA0001.severity = error
+dotnet_code_quality.DGA0001.Domain         = Application, Infrastructure, Presentation
+dotnet_code_quality.DGA0001.Application    = Infrastructure, Presentation
+dotnet_code_quality.DGA0001.Infrastructure = Presentation
+# Presentation обращается к Application только через IMessageBus (Wolverine), к Infrastructure - никогда.
+dotnet_code_quality.DGA0001.Presentation   = Infrastructure
+
+dotnet_diagnostic.AsyncFixer01.severity = error
+dotnet_diagnostic.AsyncFixer02.severity = error
+dotnet_diagnostic.AsyncFixer03.severity = error
+dotnet_diagnostic.AsyncFixer04.severity = error
+dotnet_diagnostic.AsyncFixer05.severity = error
+dotnet_diagnostic.AsyncFixer06.severity = error
