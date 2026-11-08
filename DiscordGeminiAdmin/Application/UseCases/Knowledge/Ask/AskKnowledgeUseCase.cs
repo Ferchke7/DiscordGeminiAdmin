@@ -22,8 +22,7 @@ public static class AskKnowledgeUseCase
         CancellationToken cancellationToken)
     {
         var profile = await guilds.GetByGuildIdAsync(command.GuildId, cancellationToken);
-        if (profile is null)
-            return Result.Fail(GuildErrors.NotConfigured());
+        var theme = profile?.Theme.Value ?? "Общее Discord-сообщество";
 
         var queryEmbedding = await embeddings.EmbedQueryAsync(command.Question, cancellationToken);
         if (queryEmbedding.IsFailed)
@@ -33,6 +32,6 @@ public static class AskKnowledgeUseCase
             command.GuildId, queryEmbedding.Value, DefaultTopK, cancellationToken);
 
         return await moderationAi.AnswerQuestionAsync(
-            profile.Theme.Value, command.Question, hits, cancellationToken);
+            theme, command.Question, hits, cancellationToken);
     }
 }

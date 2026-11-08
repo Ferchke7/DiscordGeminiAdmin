@@ -200,3 +200,44 @@ public sealed class AskCommand(IMessageBus bus) : ApplicationCommandModule<Appli
             ]));
     }
 }
+
+[SlashCommand("knowledge", "Поиск и ответы ИИ по векторной базе знаний сервера (RAG)")]
+public sealed class KnowledgeSearchCommands(IMessageBus bus) : ApplicationCommandModule<ApplicationCommandContext>
+{
+    [SubSlashCommand("search", "Найти ответ в базе знаний и правилах сервера через ИИ")]
+    public async Task SearchAsync(
+        [SlashCommandParameter(Description = "Поисковый запрос или вопрос по правилам сервера")] string query)
+    {
+        if (Context.Guild is null)
+        {
+            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+            return;
+        }
+
+        await RespondAsync(InteractionCallback.DeferredMessage());
+
+        var result = await bus.InvokeAsync<Result<KnowledgeAnswerDto>>(new AskKnowledge(
+            GuildId.From(Context.Guild.Id),
+            query));
+
+        if (result.IsFailed)
+        {
+            await FollowupAsync(EmbedTheme.ErrorCard(result, "Ошибка поиска по базе знаний"));
+            return;
+        }
+
+        var sources = result.Value.CitedRuleCodes.Count > 0
+            ? string.Join(", ", result.Value.CitedRuleCodes.Select(c => $"`{c}`"))
+            : "`общий контекст сервера`";
+
+        await FollowupAsync(EmbedTheme.Card(
+            "🧠 Результат поиска по базе знаний (RAG)",
+            result.Value.Answer,
+            EmbedTheme.Purple,
+            [
+                new EmbedFieldProperties { Name = "🔍 Запрос", Value = query, Inline = false },
+                new EmbedFieldProperties { Name = "📜 Источники (pgvector)", Value = sources, Inline = false }
+            ],
+            ephemeral: false));
+    }
+}

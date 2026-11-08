@@ -57,4 +57,11 @@ internal static class EmbedTheme
 
     public static InteractionMessageProperties ErrorCard(string message, string title = "Ошибка выполнения") =>
         Card($"❌ {title}", message, Danger, ephemeral: true);
+
+    public static MessageProperties ToChannelMessage(InteractionMessageProperties card) =>
+        new()
+        {
+            Embeds = card.Embeds,
+            Components = card.Components
+        };
 }

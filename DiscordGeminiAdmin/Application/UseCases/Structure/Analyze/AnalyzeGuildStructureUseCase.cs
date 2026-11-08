@@ -11,7 +11,7 @@ using FluentResults;
 
 namespace DiscordGeminiAdmin.Application.UseCases.Structure.Analyze;
 
-public sealed record AnalyzeGuildStructure(GuildId GuildId, string? Goal);
+public sealed record AnalyzeGuildStructure(GuildId GuildId, string? Goal, ChannelId? FallbackChannelId = null);
 
 public static class AnalyzeGuildStructureUseCase
 {
@@ -28,8 +28,11 @@ public static class AnalyzeGuildStructureUseCase
         CancellationToken cancellationToken)
     {
         var profile = await guilds.GetByGuildIdAsync(command.GuildId, cancellationToken);
-        if (profile is null)
+        if (profile is null && command.FallbackChannelId is null)
             return Result.Fail(GuildErrors.NotConfigured());
+
+        var theme = profile?.Theme.Value ?? command.Goal ?? "Современное IT и Discord-сообщество";
+        var targetChannelId = profile?.ModChannelId ?? command.FallbackChannelId!.Value;
 
         var structureSnapshot = await gateway.GetGuildStructureAsync(command.GuildId, cancellationToken);
         if (structureSnapshot.IsFailed)
@@ -40,7 +43,7 @@ public static class AnalyzeGuildStructureUseCase
         var adviceResult = await advisorAi.ProposeStructureAsync(
             new GuildStructureContext(
                 command.GuildId,
-                profile.Theme.Value,
+                theme,
                 command.Goal,
                 structureSnapshot.Value,
                 knowledge),
@@ -60,7 +63,7 @@ public static class AnalyzeGuildStructureUseCase
         proposals.Add(proposal);
         await unitOfWork.SaveAsync(cancellationToken);
 
-        await notifier.SendStructureProposalAsync(profile.ModChannelId, proposal, cancellationToken);
+        await notifier.SendStructureProposalAsync(targetChannelId, proposal, cancellationToken);
         return Result.Ok(proposal);
     }
 }

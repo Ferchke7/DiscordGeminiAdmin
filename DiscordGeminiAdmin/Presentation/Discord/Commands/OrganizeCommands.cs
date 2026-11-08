@@ -28,7 +28,8 @@ public sealed class OrganizeCommands(IMessageBus bus) : ApplicationCommandModule
 
         var result = await bus.InvokeAsync<Result<StructureProposal>>(new AnalyzeGuildStructure(
             GuildId.From(Context.Guild.Id),
-            goal));
+            goal,
+            ChannelId.From(Context.Channel.Id)));
 
         if (result.IsFailed)
         {

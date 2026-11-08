@@ -22,7 +22,11 @@ public static class DependencyInjection
                                   | GatewayIntents.GuildUsers
                                   | GatewayIntents.GuildModeration;
             });
-            services.AddApplicationCommands();
+            services.AddApplicationCommands(options =>
+            {
+                // Регистрируем команды мгновенно на уровне гильдий через GuildCommandSyncGatewayHandler
+                options.AutoRegisterCommands = false;
+            });
             services.AddComponentInteractions<NetCord.ButtonInteraction, ButtonInteractionContext>();
             services.AddGatewayHandlers(typeof(DependencyInjection).Assembly);
             return services;
