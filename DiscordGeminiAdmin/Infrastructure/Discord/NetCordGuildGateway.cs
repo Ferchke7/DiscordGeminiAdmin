@@ -412,6 +412,53 @@ internal sealed class NetCordGuildGateway(
         }
     }
 
+    public async Task<Result<ulong>> CreateOrAssignRoleAsync(
+        GuildId guildId,
+        string roleName,
+        MemberId? assignToMember,
+        string reason,
+        CancellationToken ct)
+    {
+        try
+        {
+            var guild = await rest.GetGuildAsync(guildId.Value, cancellationToken: ct);
+            var existingRole = guild.Roles.Values.FirstOrDefault(
+                r => string.Equals(r.Name, roleName.Trim(), StringComparison.OrdinalIgnoreCase));
+
+            ulong roleId;
+            if (existingRole is not null)
+            {
+                roleId = existingRole.Id;
+            }
+            else
+            {
+                var created = await rest.CreateGuildRoleAsync(
+                    guildId.Value,
+                    new RoleProperties { Name = roleName.Trim(), Mentionable = true },
+                    new RestRequestProperties { AuditLogReason = reason },
+                    ct);
+                roleId = created.Id;
+            }
+
+            if (assignToMember is not null)
+            {
+                await rest.AddGuildUserRoleAsync(
+                    guildId.Value,
+                    assignToMember.Value.Value,
+                    roleId,
+                    new RestRequestProperties { AuditLogReason = reason },
+                    ct);
+            }
+
+            return Result.Ok(roleId);
+        }
+        catch (RestException ex)
+        {
+            logger.LogWarning(ex, "Ошибка создания/выдачи роли {RoleName} в гильдии {GuildId}", roleName, guildId.Value);
+            return Result.Fail($"Discord отклонил создание или выдачу роли (проверьте право Manage Roles): {ex.Message}");
+        }
+    }
+
     public async Task<Result<GuildStructureSnapshot>> GetGuildStructureAsync(GuildId guildId, CancellationToken ct)
     {
         try
@@ -471,50 +518,100 @@ internal sealed class NetCordGuildGateway(
     {
         try
         {
+            var guild = await rest.GetGuildAsync(guildId.Value, cancellationToken: ct);
             var existingChannels = (await rest.GetGuildChannelsAsync(guildId.Value, cancellationToken: ct)).ToList();
             var categoriesByName = existingChannels
                 .OfType<CategoryGuildChannel>()
-                .GroupBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+                .GroupBy(c => c.Name.Trim(), StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(g => g.Key, g => g.First().Id, StringComparer.OrdinalIgnoreCase);
+
+            var existingRoleNames = new HashSet<string>(
+                guild.Roles.Values.Select(r => r.Name.Trim()),
+                StringComparer.OrdinalIgnoreCase);
 
             foreach (var step in changes)
             {
                 var auditProps = new RestRequestProperties { AuditLogReason = step.Rationale };
+                var targetName = step.TargetName.Trim();
+                if (string.IsNullOrWhiteSpace(targetName))
+                    continue;
 
                 switch (step.Kind)
                 {
                     case ProposedChangeKind.CreateCategory:
                     {
-                        var created = await rest.CreateGuildChannelAsync(
-                            guildId.Value,
-                            new GuildChannelProperties(step.TargetName, ChannelType.CategoryChannel),
-                            auditProps,
-                            ct);
-                        categoriesByName[step.TargetName] = created.Id;
+                        if (!categoriesByName.ContainsKey(targetName))
+                        {
+                            var created = await rest.CreateGuildChannelAsync(
+                                guildId.Value,
+                                new GuildChannelProperties(targetName, ChannelType.CategoryChannel),
+                                auditProps,
+                                ct);
+                            categoriesByName[targetName] = created.Id;
+                        }
                         break;
                     }
                     case ProposedChangeKind.CreateTextChannel:
                     case ProposedChangeKind.CreateVoiceChannel:
                     {
-                        var type = step.Kind == ProposedChangeKind.CreateVoiceChannel
+                        var isVoice = step.Kind == ProposedChangeKind.CreateVoiceChannel;
+                        ulong? parentId = null;
+
+                        if (!string.IsNullOrWhiteSpace(step.ParentCategory))
+                        {
+                            var catName = step.ParentCategory.Trim();
+                            if (!categoriesByName.TryGetValue(catName, out var existingCatId))
+                            {
+                                var createdCat = await rest.CreateGuildChannelAsync(
+                                    guildId.Value,
+                                    new GuildChannelProperties(catName, ChannelType.CategoryChannel),
+                                    auditProps,
+                                    ct);
+                                existingCatId = createdCat.Id;
+                                categoriesByName[catName] = existingCatId;
+                            }
+                            parentId = existingCatId;
+                        }
+
+                        var existingMatch = existingChannels.FirstOrDefault(c =>
+                            c is not CategoryGuildChannel
+                            && (isVoice ? c is VoiceGuildChannel : c is TextGuildChannel)
+                            && string.Equals(c.Name.Trim(), targetName, StringComparison.OrdinalIgnoreCase));
+
+                        if (existingMatch is not null)
+                        {
+                            if (parentId.HasValue)
+                            {
+                                await rest.ModifyGuildChannelAsync(
+                                    existingMatch.Id,
+                                    opts =>
+                                    {
+                                        opts.ParentId = parentId.Value;
+                                        if (!isVoice && !string.IsNullOrWhiteSpace(step.NewNameOrTopic))
+                                            opts.Topic = step.NewNameOrTopic;
+                                    },
+                                    auditProps,
+                                    ct);
+                            }
+                            break;
+                        }
+
+                        var type = isVoice
                             ? ChannelType.VoiceGuildChannel
                             : ChannelType.TextGuildChannel;
-                        var props = new GuildChannelProperties(step.TargetName, type)
+                        var props = new GuildChannelProperties(targetName, type)
                         {
-                            Topic = step.NewNameOrTopic
+                            ParentId = parentId,
+                            Topic = isVoice ? null : step.NewNameOrTopic
                         };
-                        if (!string.IsNullOrWhiteSpace(step.ParentCategory)
-                            && categoriesByName.TryGetValue(step.ParentCategory, out var parentId))
-                        {
-                            props.ParentId = parentId;
-                        }
-                        await rest.CreateGuildChannelAsync(guildId.Value, props, auditProps, ct);
+                        var createdCh = await rest.CreateGuildChannelAsync(guildId.Value, props, auditProps, ct);
+                        existingChannels.Add(createdCh);
                         break;
                     }
                     case ProposedChangeKind.UpdateChannelTopic:
                     {
                         var target = existingChannels.FirstOrDefault(
-                            c => string.Equals(c.Name, step.TargetName, StringComparison.OrdinalIgnoreCase));
+                            c => string.Equals(c.Name, targetName, StringComparison.OrdinalIgnoreCase));
                         if (target is not null && !string.IsNullOrWhiteSpace(step.NewNameOrTopic))
                         {
                             await rest.ModifyGuildChannelAsync(
@@ -528,7 +625,7 @@ internal sealed class NetCordGuildGateway(
                     case ProposedChangeKind.RenameChannel:
                     {
                         var target = existingChannels.FirstOrDefault(
-                            c => string.Equals(c.Name, step.TargetName, StringComparison.OrdinalIgnoreCase));
+                            c => string.Equals(c.Name, targetName, StringComparison.OrdinalIgnoreCase));
                         if (target is not null && !string.IsNullOrWhiteSpace(step.NewNameOrTopic))
                         {
                             await rest.ModifyGuildChannelAsync(
@@ -541,11 +638,15 @@ internal sealed class NetCordGuildGateway(
                     }
                     case ProposedChangeKind.CreateRole:
                     {
-                        await rest.CreateGuildRoleAsync(
-                            guildId.Value,
-                            new RoleProperties { Name = step.TargetName },
-                            auditProps,
-                            ct);
+                        if (!existingRoleNames.Contains(targetName))
+                        {
+                            await rest.CreateGuildRoleAsync(
+                                guildId.Value,
+                                new RoleProperties { Name = targetName, Mentionable = true },
+                                auditProps,
+                                ct);
+                            existingRoleNames.Add(targetName);
+                        }
                         break;
                     }
                 }

@@ -4,6 +4,7 @@ using DiscordGeminiAdmin.Application.Dependencies.Knowledge;
 using DiscordGeminiAdmin.Application.Dependencies.Persistence;
 using DiscordGeminiAdmin.Domain.Guilds;
 using DiscordGeminiAdmin.Domain.Guilds.Repositories;
+using DiscordGeminiAdmin.Domain.Moderation;
 using DiscordGeminiAdmin.Domain.Structure;
 using DiscordGeminiAdmin.Domain.Structure.Repositories;
 using DiscordGeminiAdmin.SharedKernel;
@@ -11,7 +12,12 @@ using FluentResults;
 
 namespace DiscordGeminiAdmin.Application.UseCases.Structure.Analyze;
 
-public sealed record AnalyzeGuildStructure(GuildId GuildId, string? Goal, ChannelId? FallbackChannelId = null);
+public sealed record AnalyzeGuildStructure(
+    GuildId GuildId,
+    string? Goal,
+    ChannelId? FallbackChannelId = null,
+    bool ApplyImmediately = false,
+    string? NewTheme = null);
 
 public static class AnalyzeGuildStructureUseCase
 {
@@ -31,7 +37,26 @@ public static class AnalyzeGuildStructureUseCase
         if (profile is null && command.FallbackChannelId is null)
             return Result.Fail(GuildErrors.NotConfigured());
 
-        var theme = profile?.Theme.Value ?? command.Goal ?? "Современное IT и Discord-сообщество";
+        if (!string.IsNullOrWhiteSpace(command.NewTheme) && command.FallbackChannelId is { } fbChannel)
+        {
+            var trimmedTheme = command.NewTheme.Length > 500 ? command.NewTheme[..500] : command.NewTheme;
+            if (ServerTheme.TryFrom(trimmedTheme, out var parsedTheme))
+            {
+                if (profile is null)
+                {
+                    profile = GuildProfile.Create(command.GuildId, parsedTheme, fbChannel, ModerationPolicy.Default, now);
+                    guilds.Add(profile);
+                }
+                else
+                {
+                    profile.UpdateConfiguration(parsedTheme, profile.ModChannelId, profile.ModerationPolicy, now);
+                }
+            }
+        }
+
+        var theme = !string.IsNullOrWhiteSpace(command.NewTheme)
+            ? command.NewTheme
+            : profile?.Theme.Value ?? command.Goal ?? "Современное IT и Discord-сообщество";
         var targetChannelId = profile?.ModChannelId ?? command.FallbackChannelId!.Value;
 
         var structureSnapshot = await gateway.GetGuildStructureAsync(command.GuildId, cancellationToken);
@@ -61,8 +86,24 @@ public static class AnalyzeGuildStructureUseCase
 
         var proposal = proposalResult.Value;
         proposals.Add(proposal);
-        await unitOfWork.SaveAsync(cancellationToken);
 
+        if (command.ApplyImmediately)
+        {
+            proposal.Approve(now);
+            var applyRes = await gateway.ApplyStructureChangesAsync(command.GuildId, proposal.Changes, cancellationToken);
+            if (applyRes.IsFailed)
+            {
+                proposal.MarkFailed(now);
+                await unitOfWork.SaveAsync(cancellationToken);
+                return applyRes.ToResult<StructureProposal>();
+            }
+
+            proposal.MarkApplied(now);
+            await unitOfWork.SaveAsync(cancellationToken);
+            return Result.Ok(proposal);
+        }
+
+        await unitOfWork.SaveAsync(cancellationToken);
         await notifier.SendStructureProposalAsync(targetChannelId, proposal, cancellationToken);
         return Result.Ok(proposal);
     }

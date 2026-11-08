@@ -2,6 +2,7 @@ using DiscordGeminiAdmin.Application.Dependencies.Ai;
 using DiscordGeminiAdmin.Application.Dependencies.Discord;
 using DiscordGeminiAdmin.Domain.Guilds.Repositories;
 using DiscordGeminiAdmin.Domain.Moderation.Repositories;
+using DiscordGeminiAdmin.Domain.Structure;
 using DiscordGeminiAdmin.SharedKernel;
 using FluentResults;
 
@@ -53,6 +54,17 @@ public sealed record CreateServerChannel(
     string? CategoryName,
     string? Topic,
     bool IsVoice);
+
+public sealed record CreateServerGroup(
+    GuildId GuildId,
+    string GroupName,
+    string? TextChannelsCsv,
+    string? VoiceChannelsCsv);
+
+public sealed record CreateOrAssignServerRole(
+    GuildId GuildId,
+    string RoleName,
+    MemberId? AssignToMember);
 
 public sealed record SummarizeChannelMessages(
     GuildId GuildId,
@@ -198,7 +210,53 @@ public sealed class ChannelAdminUseCase(
             command.CategoryName,
             command.Topic,
             command.IsVoice,
-            "Быстрое создание канала через /organize create-channel",
+            "Быстрое создание канала",
+            ct);
+
+    public async Task<Result<int>> Handle(CreateServerGroup command, CancellationToken ct)
+    {
+        var groupName = command.GroupName.Trim();
+        var changes = new List<ProposedChange>
+        {
+            new(ProposedChangeKind.CreateCategory, groupName, null, null, "Создание группы каналов")
+        };
+
+        if (!string.IsNullOrWhiteSpace(command.TextChannelsCsv))
+        {
+            foreach (var raw in command.TextChannelsCsv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                changes.Add(new ProposedChange(
+                    ProposedChangeKind.CreateTextChannel,
+                    raw,
+                    groupName,
+                    $"Канал группы {groupName}",
+                    "Создание текстового канала в группе"));
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(command.VoiceChannelsCsv))
+        {
+            foreach (var raw in command.VoiceChannelsCsv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                changes.Add(new ProposedChange(
+                    ProposedChangeKind.CreateVoiceChannel,
+                    raw,
+                    groupName,
+                    null,
+                    "Создание голосового канала в группе"));
+            }
+        }
+
+        var res = await guildGateway.ApplyStructureChangesAsync(command.GuildId, changes, ct);
+        return res.IsSuccess ? Result.Ok(changes.Count) : res.ToResult<int>();
+    }
+
+    public Task<Result<ulong>> Handle(CreateOrAssignServerRole command, CancellationToken ct) =>
+        guildGateway.CreateOrAssignRoleAsync(
+            command.GuildId,
+            command.RoleName,
+            command.AssignToMember,
+            "Создание/выдача роли через /role",
             ct);
 
     public async Task<Result<string>> Handle(SummarizeChannelMessages query, CancellationToken ct)

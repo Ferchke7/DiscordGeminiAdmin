@@ -1,3 +1,5 @@
+using System.Text;
+using DiscordGeminiAdmin.Application.UseCases.Moderation.AdminActions;
 using DiscordGeminiAdmin.Application.UseCases.Moderation.ChannelActions;
 using DiscordGeminiAdmin.Application.UseCases.Structure.Analyze;
 using DiscordGeminiAdmin.Domain.Structure;
@@ -11,12 +13,15 @@ using Wolverine;
 
 namespace DiscordGeminiAdmin.Presentation.Discord.Commands;
 
-[SlashCommand("organize", "ИИ-организатор структуры Discord-сервера и каналов по тематике")]
+/// <summary>
+/// Простые верхнеуровневые команды для быстрого подъёма сервера с нуля,
+/// организации голосовых комнат, групп (категорий), каналов и ролей.
+/// </summary>
 public sealed class OrganizeCommands(IMessageBus bus) : ApplicationCommandModule<ApplicationCommandContext>
 {
-    [SubSlashCommand("analyze", "Проанализировать сервер через ИИ и предложить план улучшения каналов/категорий/ролей")]
-    public async Task AnalyzeAsync(
-        [SlashCommandParameter(Description = "Дополнительное пожелание к структуре (необязательно)")] string? goal = null)
+    [SlashCommand("setup", "Поднять сервер под тематику: ИИ сразу создаст группы, голосовые, текстовые каналы и роли")]
+    public async Task SetupAsync(
+        [SlashCommandParameter(Name = "theme", Description = "Тематика и пожелания (например: Айти сообщество, созвоны, бэкенд и фронтенд)")] string theme)
     {
         if (Context.Guild is null)
         {
@@ -24,36 +29,30 @@ public sealed class OrganizeCommands(IMessageBus bus) : ApplicationCommandModule
             return;
         }
 
-        await RespondAsync(InteractionCallback.DeferredMessage(MessageFlags.Ephemeral));
+        await RespondAsync(InteractionCallback.DeferredMessage());
 
+        var goal = $"Подними и организуй сервер под тематику «{theme}»: создай удобные группы (категории), текстовые каналы, голосовые комнаты для общения/созвонов и базовые роли.";
         var result = await bus.InvokeAsync<Result<StructureProposal>>(new AnalyzeGuildStructure(
             GuildId.From(Context.Guild.Id),
-            goal,
-            ChannelId.From(Context.Channel.Id)));
+            Goal: goal,
+            FallbackChannelId: ChannelId.From(Context.Channel.Id),
+            ApplyImmediately: true,
+            NewTheme: theme));
 
         if (result.IsFailed)
         {
-            await FollowupAsync(EmbedTheme.ErrorCard(result, "Ошибка анализа структуры"));
+            await FollowupAsync(EmbedTheme.ErrorCard(result, "Не удалось автоматически поднять структуру сервера"));
             return;
         }
 
-        var p = result.Value;
-        await FollowupAsync(EmbedTheme.SuccessCard(
-            "План реорганизации сформирован ИИ",
-            $"Карточка с планом отправлена в канал модераторов. Нажмите **`[✅ Одобрить и применить]`**, чтобы бот автоматически создал категории, каналы и роли.",
-            [
-                new EmbedFieldProperties { Name = "🆔 ID Плана", Value = $"`{p.Id}`", Inline = true },
-                new EmbedFieldProperties { Name = "📋 Шагов в плане", Value = $"`{p.Changes.Count}`", Inline = true },
-                new EmbedFieldProperties { Name = "📝 Краткое резюме", Value = p.Summary.Length > 300 ? p.Summary[..300] + "..." : p.Summary, Inline = false }
-            ]));
+        await FollowupAsync(BuildAppliedStructureCard(
+            $"🚀 Сервер настроен под тематику: {theme}",
+            result.Value));
     }
 
-    [SubSlashCommand("create-channel", "Быстро создать новый текстовый или голосовой канал в нужной категории")]
-    public async Task CreateChannelAsync(
-        [SlashCommandParameter(Description = "Название нового канала (например: новости-проекта)")] string name,
-        [SlashCommandParameter(Description = "Название категории (если нет — бот создаст её автоматически)")] string? category = null,
-        [SlashCommandParameter(Description = "Описание (топик) канала")] string? topic = null,
-        [SlashCommandParameter(Description = "Голосовой канал? (false = текстовый, true = голосовой)")] bool isVoice = false)
+    [SlashCommand("ai", "Попросить ИИ организовать голосовые, добавить группы, каналы или роли по вашей просьбе")]
+    public async Task AiOrganizeAsync(
+        [SlashCommandParameter(Name = "prompt", Description = "Что сделать (например: организуй 4 голосовых канала для пати и стримов, добавь группу Проекты)")] string prompt)
     {
         if (Context.Guild is null)
         {
@@ -61,24 +60,245 @@ public sealed class OrganizeCommands(IMessageBus bus) : ApplicationCommandModule
             return;
         }
 
-        await RespondAsync(InteractionCallback.DeferredMessage(MessageFlags.Ephemeral));
+        await RespondAsync(InteractionCallback.DeferredMessage());
+
+        var result = await bus.InvokeAsync<Result<StructureProposal>>(new AnalyzeGuildStructure(
+            GuildId.From(Context.Guild.Id),
+            Goal: prompt,
+            FallbackChannelId: ChannelId.From(Context.Channel.Id),
+            ApplyImmediately: true));
+
+        if (result.IsFailed)
+        {
+            await FollowupAsync(EmbedTheme.ErrorCard(result, "Ошибка выполнения запроса ИИ"));
+            return;
+        }
+
+        await FollowupAsync(BuildAppliedStructureCard(
+            "🤖 ИИ выполнил организацию сервера",
+            result.Value));
+    }
+
+    [SlashCommand("voice", "Создать голосовой канал (комнату) в нужной группе")]
+    public async Task CreateVoiceAsync(
+        [SlashCommandParameter(Name = "name", Description = "Название голосового канала (например: 🎙️ Общий созвон)")] string name,
+        [SlashCommandParameter(Name = "group", Description = "Название группы/категории (если её нет — создастся автоматически)")] string? group = "🔊 Голосовые каналы")
+    {
+        if (Context.Guild is null)
+        {
+            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+            return;
+        }
+
+        await RespondAsync(InteractionCallback.DeferredMessage());
 
         var result = await bus.InvokeAsync<Result<ChannelId>>(new CreateServerChannel(
             GuildId.From(Context.Guild.Id),
             MemberId.From(Context.User.Id),
             name,
-            category,
-            topic,
-            isVoice));
+            group,
+            Topic: null,
+            IsVoice: true));
 
         if (result.IsFailed)
         {
-            await FollowupAsync(EmbedTheme.ErrorCard(result, "Ошибка создания канала"));
+            await FollowupAsync(EmbedTheme.ErrorCard(result, "Ошибка создания голосового канала"));
             return;
         }
 
         await FollowupAsync(EmbedTheme.SuccessCard(
-            "Канал создан",
-            $"Создан {(isVoice ? "🔊 голосовой" : "💬 текстовый")} канал <#{result.Value.Value}>{(string.IsNullOrWhiteSpace(category) ? string.Empty : $" в категории **`{category}`**")}."));
+            "🔊 Голосовой канал создан",
+            $"Создан голосовой канал <#{result.Value.Value}>{(string.IsNullOrWhiteSpace(group) ? string.Empty : $" в группе **`{group}`**")}.",
+            ephemeral: false));
+    }
+
+    [SlashCommand("group", "Создать группу (категорию) и сразу добавить в неё текстовые и голосовые каналы")]
+    public async Task CreateGroupAsync(
+        [SlashCommandParameter(Name = "name", Description = "Название новой группы (например: 💻 Разработка)")] string name,
+        [SlashCommandParameter(Name = "text-channels", Description = "Текстовые каналы через запятую (например: общий, вопросы, код-ревью)")] string? textChannels = null,
+        [SlashCommandParameter(Name = "voice-channels", Description = "Голосовые каналы через запятую (например: Дейлик, Парный кодинг)")] string? voiceChannels = null)
+    {
+        if (Context.Guild is null)
+        {
+            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+            return;
+        }
+
+        await RespondAsync(InteractionCallback.DeferredMessage());
+
+        var result = await bus.InvokeAsync<Result<int>>(new CreateServerGroup(
+            GuildId.From(Context.Guild.Id),
+            name,
+            textChannels,
+            voiceChannels));
+
+        if (result.IsFailed)
+        {
+            await FollowupAsync(EmbedTheme.ErrorCard(result, "Ошибка создания группы каналов"));
+            return;
+        }
+
+        await FollowupAsync(EmbedTheme.SuccessCard(
+            $"📁 Группа «{name}» создана",
+            $"Успешно создана группа **`{name}`**"
+            + (string.IsNullOrWhiteSpace(textChannels) ? string.Empty : $"\n💬 **Текстовые:** `{textChannels}`")
+            + (string.IsNullOrWhiteSpace(voiceChannels) ? string.Empty : $"\n🔊 **Голосовые:** `{voiceChannels}`"),
+            ephemeral: false));
+    }
+
+    [SlashCommand("channel", "Создать текстовый канал в нужной группе")]
+    public async Task CreateTextChannelAsync(
+        [SlashCommandParameter(Name = "name", Description = "Название текстового канала (например: новости)")] string name,
+        [SlashCommandParameter(Name = "group", Description = "Название группы/категории (если нет — создастся автоматически)")] string? group = null,
+        [SlashCommandParameter(Name = "topic", Description = "Описание канала")] string? topic = null)
+    {
+        if (Context.Guild is null)
+        {
+            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+            return;
+        }
+
+        await RespondAsync(InteractionCallback.DeferredMessage());
+
+        var result = await bus.InvokeAsync<Result<ChannelId>>(new CreateServerChannel(
+            GuildId.From(Context.Guild.Id),
+            MemberId.From(Context.User.Id),
+            name,
+            group,
+            topic,
+            IsVoice: false));
+
+        if (result.IsFailed)
+        {
+            await FollowupAsync(EmbedTheme.ErrorCard(result, "Ошибка создания текстового канала"));
+            return;
+        }
+
+        await FollowupAsync(EmbedTheme.SuccessCard(
+            "💬 Текстовый канал создан",
+            $"Создан канал <#{result.Value.Value}>{(string.IsNullOrWhiteSpace(group) ? string.Empty : $" в группе **`{group}`**")}.",
+            ephemeral: false));
+    }
+
+    [SlashCommand("role", "Создать новую роль на сервере (и по желанию сразу выдать участнику)")]
+    public async Task CreateOrAssignRoleAsync(
+        [SlashCommandParameter(Name = "name", Description = "Название роли (например: Разработчик)")] string name,
+        [SlashCommandParameter(Name = "user", Description = "Участник, которому сразу выдать эту роль (необязательно)")] User? user = null)
+    {
+        if (Context.Guild is null)
+        {
+            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+            return;
+        }
+
+        await RespondAsync(InteractionCallback.DeferredMessage());
+
+        var result = await bus.InvokeAsync<Result<ulong>>(new CreateOrAssignServerRole(
+            GuildId.From(Context.Guild.Id),
+            name,
+            user is not null ? MemberId.From(user.Id) : null));
+
+        if (result.IsFailed)
+        {
+            await FollowupAsync(EmbedTheme.ErrorCard(result, "Ошибка создания или выдачи роли"));
+            return;
+        }
+
+        var desc = user is not null
+            ? $"Роль <@&{result.Value}> готова и выдана участнику <@{user.Id}>."
+            : $"Роль <@&{result.Value}> успешно создана на сервере.";
+
+        await FollowupAsync(EmbedTheme.SuccessCard("🎭 Роль готова", desc, ephemeral: false));
+    }
+
+    [SlashCommand("server", "Показать текущую структуру сервера: группы, голосовые, текстовые каналы и роли")]
+    public async Task ServerOverviewAsync()
+    {
+        if (Context.Guild is null)
+        {
+            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+            return;
+        }
+
+        await RespondAsync(InteractionCallback.DeferredMessage());
+
+        var result = await bus.InvokeAsync<Result<GuildDashboardReport>>(
+            new GetGuildDashboard(GuildId.From(Context.Guild.Id)));
+
+        if (result.IsFailed)
+        {
+            await FollowupAsync(EmbedTheme.ErrorCard(result));
+            return;
+        }
+
+        var d = result.Value;
+        var textChannels = d.Structure?.Channels.Where(c => !c.IsVoice).Select(c => $"#{c.Name}").ToList() ?? [];
+        var voiceChannels = d.Structure?.Channels.Where(c => c.IsVoice).Select(c => $"🔊 {c.Name}").ToList() ?? [];
+        var categories = d.Structure?.Categories ?? [];
+        var roles = d.Structure?.Roles ?? [];
+
+        await FollowupAsync(EmbedTheme.Card(
+            $"📊 Сервер: {d.Structure?.GuildName ?? Context.Guild.Name}",
+            $"**Тематика:** `{d.Profile?.Theme.Value ?? "Не задана (вызовите /setup)"}`",
+            EmbedTheme.Primary,
+            [
+                new EmbedFieldProperties
+                {
+                    Name = $"📁 Группы ({categories.Count})",
+                    Value = categories.Count > 0 ? string.Join(", ", categories.Take(15).Select(c => $"`{c}`")) : "`нет групп`",
+                    Inline = false
+                },
+                new EmbedFieldProperties
+                {
+                    Name = $"🔊 Голосовые каналы ({voiceChannels.Count})",
+                    Value = voiceChannels.Count > 0 ? string.Join(", ", voiceChannels.Take(15).Select(c => $"`{c}`")) : "`нет голосовых`",
+                    Inline = false
+                },
+                new EmbedFieldProperties
+                {
+                    Name = $"💬 Текстовые каналы ({textChannels.Count})",
+                    Value = textChannels.Count > 0 ? string.Join(", ", textChannels.Take(20).Select(c => $"`{c}`")) : "`нет каналов`",
+                    Inline = false
+                },
+                new EmbedFieldProperties
+                {
+                    Name = $"🎭 Роли ({roles.Count})",
+                    Value = roles.Count > 0 ? string.Join(", ", roles.Take(15).Select(r => $"`{r}`")) : "`нет ролей`",
+                    Inline = false
+                }
+            ],
+            ephemeral: false));
+    }
+
+    internal static InteractionMessageProperties BuildAppliedStructureCard(string title, StructureProposal proposal)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine(proposal.Summary);
+        sb.AppendLine();
+        sb.AppendLine($"**Выполнено действий на сервере (`{proposal.Changes.Count}`):**");
+
+        foreach (var change in proposal.Changes.Take(20))
+        {
+            var icon = change.Kind switch
+            {
+                ProposedChangeKind.CreateCategory => "📁 Группа:",
+                ProposedChangeKind.CreateVoiceChannel => "🔊 Голосовой:",
+                ProposedChangeKind.CreateTextChannel => "💬 Канал:",
+                ProposedChangeKind.CreateRole => "🎭 Роль:",
+                ProposedChangeKind.RenameChannel => "✏️ Переименован:",
+                ProposedChangeKind.UpdateChannelTopic => "📝 Описание:",
+                _ => "•"
+            };
+            var groupInfo = !string.IsNullOrWhiteSpace(change.ParentCategory)
+                ? $" _(в группе `{change.ParentCategory}`)_"
+                : string.Empty;
+            sb.AppendLine($"{icon} **`{change.TargetName}`**{groupInfo}");
+        }
+
+        return EmbedTheme.Card(
+            title,
+            sb.ToString(),
+            EmbedTheme.Success,
+            ephemeral: false);
     }
 }
