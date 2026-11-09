@@ -84,6 +84,35 @@ public sealed partial class MessageCreateGatewayHandler(
         IMessageBus bus)
     {
         var lower = raw.ToLowerInvariant();
+        var isCommandOrMention =
+            lower is "/help" or "!help" or "!помощь" or "/помощь" or "/server" or "!server" or "/status" or "!status" or "/info" or "!info"
+            || lower.StartsWith("/help ", StringComparison.Ordinal)
+            || lower.StartsWith("!help ", StringComparison.Ordinal)
+            || lower.StartsWith("/setup", StringComparison.Ordinal)
+            || lower.StartsWith("!setup", StringComparison.Ordinal)
+            || lower.StartsWith("/mod-config set-theme", StringComparison.Ordinal)
+            || lower.StartsWith("/ai", StringComparison.Ordinal)
+            || lower.StartsWith("!ai", StringComparison.Ordinal)
+            || lower.StartsWith("/code", StringComparison.Ordinal)
+            || lower.StartsWith("!code", StringComparison.Ordinal)
+            || lower.StartsWith("/ask", StringComparison.Ordinal)
+            || lower.StartsWith("!ask", StringComparison.Ordinal)
+            || lower.StartsWith("/history", StringComparison.Ordinal)
+            || lower.StartsWith("!history", StringComparison.Ordinal)
+            || lower.StartsWith("/organize", StringComparison.Ordinal)
+            || lower.StartsWith("!organize", StringComparison.Ordinal)
+            || LeadingBotMentionRegex().IsMatch(raw);
+
+        if (!isCommandOrMention)
+            return false;
+
+        if (!await ModeratorGuard.IsModeratorAsync(message.Author, null, message.GuildId, restClient))
+        {
+            await restClient.SendMessageAsync(
+                message.ChannelId,
+                EmbedTheme.ToChannelMessage(ModeratorGuard.AccessDeniedCard()));
+            return true;
+        }
 
         // 1. /help, !help, !помощь
         if (lower is "/help" or "!help" or "!помощь" or "/помощь"

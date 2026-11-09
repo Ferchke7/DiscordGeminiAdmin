@@ -15,21 +15,35 @@ namespace DiscordGeminiAdmin.Presentation.Discord.Commands;
 /// </summary>
 public sealed class AdminCommands(IMessageBus bus) : ApplicationCommandModule<ApplicationCommandContext>
 {
+    private async ValueTask<bool> EnsureModeratorAsync()
+    {
+        if (Context.Guild is null)
+        {
+            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+            return false;
+        }
+
+        if (!await ModeratorGuard.IsModeratorAsync(Context.User, Context.Guild, Context.Guild.Id, Context.Client.Rest))
+        {
+            await RespondAsync(InteractionCallback.Message(ModeratorGuard.AccessDeniedCard()));
+            return false;
+        }
+
+        return true;
+    }
+
     [SlashCommand("clear", "Очистить последние сообщения в чате (или сообщения конкретного пользователя)")]
     public async Task ClearAsync(
         [SlashCommandParameter(Name = "count", Description = "Количество сообщений для удаления (1..100)")] int count = 20,
         [SlashCommandParameter(Name = "user", Description = "Удалять только сообщения этого участника (необязательно)")] User? user = null)
     {
-        if (Context.Guild is null)
-        {
-            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+        if (!await EnsureModeratorAsync())
             return;
-        }
 
         await RespondAsync(InteractionCallback.DeferredMessage(MessageFlags.Ephemeral));
 
         var result = await bus.InvokeAsync<Result<int>>(new PurgeChannelMessages(
-            GuildId.From(Context.Guild.Id),
+            GuildId.From(Context.Guild!.Id),
             ChannelId.From(Context.Channel.Id),
             MemberId.From(Context.User.Id),
             count,
@@ -52,16 +66,13 @@ public sealed class AdminCommands(IMessageBus bus) : ApplicationCommandModule<Ap
         [SlashCommandParameter(Description = "Пользователь, чьи сообщения нужно удалить")] User user,
         [SlashCommandParameter(Description = "Максимум проверяемых сообщений (1..100)")] int count = 100)
     {
-        if (Context.Guild is null)
-        {
-            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+        if (!await EnsureModeratorAsync())
             return;
-        }
 
         await RespondAsync(InteractionCallback.DeferredMessage(MessageFlags.Ephemeral));
 
         var result = await bus.InvokeAsync<Result<int>>(new PurgeChannelMessages(
-            GuildId.From(Context.Guild.Id),
+            GuildId.From(Context.Guild!.Id),
             ChannelId.From(Context.Channel.Id),
             MemberId.From(Context.User.Id),
             count,
@@ -84,16 +95,13 @@ public sealed class AdminCommands(IMessageBus bus) : ApplicationCommandModule<Ap
         [SlashCommandParameter(Description = "Количество последних сообщений для очистки (1..100)")] int count = 50,
         [SlashCommandParameter(Description = "Причина очистки")] string reason = "Очистка сообщений после указанного времени")
     {
-        if (Context.Guild is null)
-        {
-            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+        if (!await EnsureModeratorAsync())
             return;
-        }
 
         await RespondAsync(InteractionCallback.DeferredMessage(MessageFlags.Ephemeral));
 
         var result = await bus.InvokeAsync<Result<int>>(new PurgeChannelMessages(
-            GuildId.From(Context.Guild.Id),
+            GuildId.From(Context.Guild!.Id),
             ChannelId.From(Context.Channel.Id),
             MemberId.From(Context.User.Id),
             count,
@@ -116,16 +124,13 @@ public sealed class AdminCommands(IMessageBus bus) : ApplicationCommandModule<Ap
         [SlashCommandParameter(Name = "user", Description = "Участник для бана")] User user,
         [SlashCommandParameter(Name = "reason", Description = "Причина бана")] string reason = "Нарушение правил сервера")
     {
-        if (Context.Guild is null)
-        {
-            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+        if (!await EnsureModeratorAsync())
             return;
-        }
 
         await RespondAsync(InteractionCallback.DeferredMessage());
 
         var result = await bus.InvokeAsync<Result<Guid>>(new AdminBanMember(
-            GuildId.From(Context.Guild.Id),
+            GuildId.From(Context.Guild!.Id),
             MemberId.From(user.Id),
             MemberId.From(Context.User.Id),
             reason));
@@ -148,11 +153,8 @@ public sealed class AdminCommands(IMessageBus bus) : ApplicationCommandModule<Ap
         [SlashCommandParameter(Name = "user-id", Description = "Discord ID пользователя (число)")] string userId,
         [SlashCommandParameter(Name = "reason", Description = "Причина разбана")] string reason = "Снятие бана администратором")
     {
-        if (Context.Guild is null)
-        {
-            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+        if (!await EnsureModeratorAsync())
             return;
-        }
 
         if (!ulong.TryParse(userId.Trim(), out var rawId) || !MemberId.TryFrom(rawId, out var targetId))
         {
@@ -163,7 +165,7 @@ public sealed class AdminCommands(IMessageBus bus) : ApplicationCommandModule<Ap
         await RespondAsync(InteractionCallback.DeferredMessage());
 
         var result = await bus.InvokeAsync<Result>(new AdminUnbanMember(
-            GuildId.From(Context.Guild.Id),
+            GuildId.From(Context.Guild!.Id),
             targetId,
             MemberId.From(Context.User.Id),
             reason));
@@ -185,16 +187,13 @@ public sealed class AdminCommands(IMessageBus bus) : ApplicationCommandModule<Ap
         [SlashCommandParameter(Name = "user", Description = "Участник для кика")] User user,
         [SlashCommandParameter(Name = "reason", Description = "Причина кика")] string reason = "Нарушение правил сервера")
     {
-        if (Context.Guild is null)
-        {
-            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+        if (!await EnsureModeratorAsync())
             return;
-        }
 
         await RespondAsync(InteractionCallback.DeferredMessage());
 
         var result = await bus.InvokeAsync<Result<Guid>>(new AdminKickMember(
-            GuildId.From(Context.Guild.Id),
+            GuildId.From(Context.Guild!.Id),
             MemberId.From(user.Id),
             MemberId.From(Context.User.Id),
             reason));
@@ -218,16 +217,13 @@ public sealed class AdminCommands(IMessageBus bus) : ApplicationCommandModule<Ap
         [SlashCommandParameter(Name = "minutes", Description = "На сколько минут (например: 10, 60, 1440)")] int minutes = 60,
         [SlashCommandParameter(Name = "reason", Description = "Причина мута")] string reason = "Нарушение правил общения")
     {
-        if (Context.Guild is null)
-        {
-            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+        if (!await EnsureModeratorAsync())
             return;
-        }
 
         await RespondAsync(InteractionCallback.DeferredMessage());
 
         var result = await bus.InvokeAsync<Result<Guid>>(new AdminTimeoutMember(
-            GuildId.From(Context.Guild.Id),
+            GuildId.From(Context.Guild!.Id),
             MemberId.From(user.Id),
             MemberId.From(Context.User.Id),
             minutes,
@@ -250,16 +246,13 @@ public sealed class AdminCommands(IMessageBus bus) : ApplicationCommandModule<Ap
     public async Task UnmuteAsync(
         [SlashCommandParameter(Name = "user", Description = "Участник")] User user)
     {
-        if (Context.Guild is null)
-        {
-            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+        if (!await EnsureModeratorAsync())
             return;
-        }
 
         await RespondAsync(InteractionCallback.DeferredMessage());
 
         var result = await bus.InvokeAsync<Result>(new AdminUntimeoutMember(
-            GuildId.From(Context.Guild.Id),
+            GuildId.From(Context.Guild!.Id),
             MemberId.From(user.Id),
             MemberId.From(Context.User.Id),
             "Снятие мута администратором"));
@@ -281,16 +274,13 @@ public sealed class AdminCommands(IMessageBus bus) : ApplicationCommandModule<Ap
         [SlashCommandParameter(Name = "user", Description = "Участник")] User user,
         [SlashCommandParameter(Name = "reason", Description = "Причина предупреждения")] string reason)
     {
-        if (Context.Guild is null)
-        {
-            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+        if (!await EnsureModeratorAsync())
             return;
-        }
 
         await RespondAsync(InteractionCallback.DeferredMessage());
 
         var result = await bus.InvokeAsync<Result<(Guid CaseId, int TotalCases)>>(new AdminWarnMember(
-            GuildId.From(Context.Guild.Id),
+            GuildId.From(Context.Guild!.Id),
             MemberId.From(user.Id),
             MemberId.From(Context.User.Id),
             reason,
@@ -315,17 +305,14 @@ public sealed class AdminCommands(IMessageBus bus) : ApplicationCommandModule<Ap
         [SlashCommandParameter(Name = "message", Description = "Текст объявления")] string message,
         [SlashCommandParameter(Name = "channel", Description = "Канал для публикации (по умолчанию — текущий)")] TextGuildChannel? channel = null)
     {
-        if (Context.Guild is null)
-        {
-            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+        if (!await EnsureModeratorAsync())
             return;
-        }
 
         await RespondAsync(InteractionCallback.DeferredMessage(MessageFlags.Ephemeral));
 
         var targetChannelId = channel?.Id ?? Context.Channel.Id;
         var result = await bus.InvokeAsync<Result>(new PublishAnnouncement(
-            GuildId.From(Context.Guild.Id),
+            GuildId.From(Context.Guild!.Id),
             ChannelId.From(targetChannelId),
             MemberId.From(Context.User.Id),
             title,

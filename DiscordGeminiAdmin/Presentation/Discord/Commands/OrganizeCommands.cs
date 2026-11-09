@@ -19,21 +19,35 @@ namespace DiscordGeminiAdmin.Presentation.Discord.Commands;
 /// </summary>
 public sealed class OrganizeCommands(IMessageBus bus) : ApplicationCommandModule<ApplicationCommandContext>
 {
-    [SlashCommand("setup", "Поднять сервер под тематику: ИИ сразу создаст группы, голосовые, текстовые каналы и роли")]
-    public async Task SetupAsync(
-        [SlashCommandParameter(Name = "theme", Description = "Тематика и пожелания (например: Айти сообщество, созвоны, бэкенд и фронтенд)")] string theme)
+    private async ValueTask<bool> EnsureModeratorAsync()
     {
         if (Context.Guild is null)
         {
             await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
-            return;
+            return false;
         }
+
+        if (!await ModeratorGuard.IsModeratorAsync(Context.User, Context.Guild, Context.Guild.Id, Context.Client.Rest))
+        {
+            await RespondAsync(InteractionCallback.Message(ModeratorGuard.AccessDeniedCard()));
+            return false;
+        }
+
+        return true;
+    }
+
+    [SlashCommand("setup", "Поднять сервер под тематику: ИИ сразу создаст группы, голосовые, текстовые каналы и роли")]
+    public async Task SetupAsync(
+        [SlashCommandParameter(Name = "theme", Description = "Тематика и пожелания (например: Айти сообщество, созвоны, бэкенд и фронтенд)")] string theme)
+    {
+        if (!await EnsureModeratorAsync())
+            return;
 
         await RespondAsync(InteractionCallback.DeferredMessage());
 
         var goal = $"Подними и организуй сервер под тематику «{theme}»: создай удобные группы (категории), текстовые каналы, голосовые комнаты для общения/созвонов и базовые роли.";
         var result = await bus.InvokeAsync<Result<StructureProposal>>(new AnalyzeGuildStructure(
-            GuildId.From(Context.Guild.Id),
+            GuildId.From(Context.Guild!.Id),
             Goal: goal,
             FallbackChannelId: ChannelId.From(Context.Channel.Id),
             ApplyImmediately: true,
@@ -54,16 +68,13 @@ public sealed class OrganizeCommands(IMessageBus bus) : ApplicationCommandModule
     public async Task AiOrganizeAsync(
         [SlashCommandParameter(Name = "prompt", Description = "Ваш запрос: код, вопрос, поиск по истории или организация голосовых/групп")] string prompt)
     {
-        if (Context.Guild is null)
-        {
-            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+        if (!await EnsureModeratorAsync())
             return;
-        }
 
         await RespondAsync(InteractionCallback.DeferredMessage());
 
         var result = await bus.InvokeAsync<Result<StructureProposal>>(new AnalyzeGuildStructure(
-            GuildId.From(Context.Guild.Id),
+            GuildId.From(Context.Guild!.Id),
             Goal: prompt,
             FallbackChannelId: ChannelId.From(Context.Channel.Id),
             ApplyImmediately: true));
@@ -84,11 +95,8 @@ public sealed class OrganizeCommands(IMessageBus bus) : ApplicationCommandModule
         [SlashCommandParameter(Name = "task", Description = "Что нужно написать или исправить (например: REST контроллер на Spring Boot)")] string task,
         [SlashCommandParameter(Name = "language", Description = "Язык программирования (например: C#, Java, Python, TypeScript, SQL)")] string? language = null)
     {
-        if (Context.Guild is null)
-        {
-            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+        if (!await EnsureModeratorAsync())
             return;
-        }
 
         await RespondAsync(InteractionCallback.DeferredMessage());
 
@@ -96,7 +104,7 @@ public sealed class OrganizeCommands(IMessageBus bus) : ApplicationCommandModule
         var prompt = $"Напиши чистый, рабочий код с кратким объяснением{langPart}: {task}. Не меняй каналы сервера (changes = []).";
 
         var result = await bus.InvokeAsync<Result<StructureProposal>>(new AnalyzeGuildStructure(
-            GuildId.From(Context.Guild.Id),
+            GuildId.From(Context.Guild!.Id),
             Goal: prompt,
             FallbackChannelId: ChannelId.From(Context.Channel.Id),
             ApplyImmediately: true));
@@ -116,16 +124,13 @@ public sealed class OrganizeCommands(IMessageBus bus) : ApplicationCommandModule
     public async Task AskAsync(
         [SlashCommandParameter(Name = "question", Description = "Ваш вопрос по программированию, серверу или любой теме")] string question)
     {
-        if (Context.Guild is null)
-        {
-            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+        if (!await EnsureModeratorAsync())
             return;
-        }
 
         await RespondAsync(InteractionCallback.DeferredMessage());
 
         var result = await bus.InvokeAsync<Result<StructureProposal>>(new AnalyzeGuildStructure(
-            GuildId.From(Context.Guild.Id),
+            GuildId.From(Context.Guild!.Id),
             Goal: $"Ответь подробно на вопрос пользователя (не меняя каналы сервера, changes = []): {question}",
             FallbackChannelId: ChannelId.From(Context.Channel.Id),
             ApplyImmediately: true));
@@ -145,11 +150,8 @@ public sealed class OrganizeCommands(IMessageBus bus) : ApplicationCommandModule
     public async Task HistoryAsync(
         [SlashCommandParameter(Name = "query", Description = "Что найти в истории чата (оставьте пустым для общей выжимки переписки)")] string? query = null)
     {
-        if (Context.Guild is null)
-        {
-            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+        if (!await EnsureModeratorAsync())
             return;
-        }
 
         await RespondAsync(InteractionCallback.DeferredMessage());
 
@@ -158,7 +160,7 @@ public sealed class OrganizeCommands(IMessageBus bus) : ApplicationCommandModule
             : $"Найди в истории сообщений этого канала (<channel_history>) информацию по запросу: «{query}». Укажи, кто, когда и что именно писал.";
 
         var result = await bus.InvokeAsync<Result<StructureProposal>>(new AnalyzeGuildStructure(
-            GuildId.From(Context.Guild.Id),
+            GuildId.From(Context.Guild!.Id),
             Goal: goal,
             FallbackChannelId: ChannelId.From(Context.Channel.Id),
             ApplyImmediately: true,
@@ -180,16 +182,13 @@ public sealed class OrganizeCommands(IMessageBus bus) : ApplicationCommandModule
         [SlashCommandParameter(Name = "name", Description = "Название голосового канала (например: 🎙️ Общий созвон)")] string name,
         [SlashCommandParameter(Name = "group", Description = "Название группы/категории (если её нет — создастся автоматически)")] string? group = "🔊 Голосовые каналы")
     {
-        if (Context.Guild is null)
-        {
-            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+        if (!await EnsureModeratorAsync())
             return;
-        }
 
         await RespondAsync(InteractionCallback.DeferredMessage());
 
         var result = await bus.InvokeAsync<Result<ChannelId>>(new CreateServerChannel(
-            GuildId.From(Context.Guild.Id),
+            GuildId.From(Context.Guild!.Id),
             MemberId.From(Context.User.Id),
             name,
             group,
@@ -214,16 +213,13 @@ public sealed class OrganizeCommands(IMessageBus bus) : ApplicationCommandModule
         [SlashCommandParameter(Name = "text-channels", Description = "Текстовые каналы через запятую (например: общий, вопросы, код-ревью)")] string? textChannels = null,
         [SlashCommandParameter(Name = "voice-channels", Description = "Голосовые каналы через запятую (например: Дейлик, Парный кодинг)")] string? voiceChannels = null)
     {
-        if (Context.Guild is null)
-        {
-            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+        if (!await EnsureModeratorAsync())
             return;
-        }
 
         await RespondAsync(InteractionCallback.DeferredMessage());
 
         var result = await bus.InvokeAsync<Result<int>>(new CreateServerGroup(
-            GuildId.From(Context.Guild.Id),
+            GuildId.From(Context.Guild!.Id),
             name,
             textChannels,
             voiceChannels));
@@ -248,16 +244,13 @@ public sealed class OrganizeCommands(IMessageBus bus) : ApplicationCommandModule
         [SlashCommandParameter(Name = "group", Description = "Название группы/категории (если нет — создастся автоматически)")] string? group = null,
         [SlashCommandParameter(Name = "topic", Description = "Описание канала")] string? topic = null)
     {
-        if (Context.Guild is null)
-        {
-            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+        if (!await EnsureModeratorAsync())
             return;
-        }
 
         await RespondAsync(InteractionCallback.DeferredMessage());
 
         var result = await bus.InvokeAsync<Result<ChannelId>>(new CreateServerChannel(
-            GuildId.From(Context.Guild.Id),
+            GuildId.From(Context.Guild!.Id),
             MemberId.From(Context.User.Id),
             name,
             group,
@@ -281,16 +274,13 @@ public sealed class OrganizeCommands(IMessageBus bus) : ApplicationCommandModule
         [SlashCommandParameter(Name = "name", Description = "Название роли (например: Разработчик)")] string name,
         [SlashCommandParameter(Name = "user", Description = "Участник, которому сразу выдать эту роль (необязательно)")] User? user = null)
     {
-        if (Context.Guild is null)
-        {
-            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+        if (!await EnsureModeratorAsync())
             return;
-        }
 
         await RespondAsync(InteractionCallback.DeferredMessage());
 
         var result = await bus.InvokeAsync<Result<ulong>>(new CreateOrAssignServerRole(
-            GuildId.From(Context.Guild.Id),
+            GuildId.From(Context.Guild!.Id),
             name,
             user is not null ? MemberId.From(user.Id) : null));
 
@@ -310,16 +300,13 @@ public sealed class OrganizeCommands(IMessageBus bus) : ApplicationCommandModule
     [SlashCommand("server", "Показать текущую структуру сервера: группы, голосовые, текстовые каналы и роли")]
     public async Task ServerOverviewAsync()
     {
-        if (Context.Guild is null)
-        {
-            await RespondAsync(InteractionCallback.Message(EmbedTheme.ErrorCard("Команда доступна только на сервере.")));
+        if (!await EnsureModeratorAsync())
             return;
-        }
 
         await RespondAsync(InteractionCallback.DeferredMessage());
 
         var result = await bus.InvokeAsync<Result<GuildDashboardReport>>(
-            new GetGuildDashboard(GuildId.From(Context.Guild.Id)));
+            new GetGuildDashboard(GuildId.From(Context.Guild!.Id)));
 
         if (result.IsFailed)
         {

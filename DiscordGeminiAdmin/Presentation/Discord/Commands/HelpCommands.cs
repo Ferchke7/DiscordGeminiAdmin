@@ -7,7 +7,16 @@ namespace DiscordGeminiAdmin.Presentation.Discord.Commands;
 public sealed class HelpCommands : ApplicationCommandModule<ApplicationCommandContext>
 {
     [SlashCommand("help", "Список всех команд бота для настройки сервера, голосовых комнат и модерации")]
-    public InteractionMessageProperties Help() => HelpSectionBuilder.BuildMessage("overview", ephemeral: false);
+    public async Task<InteractionMessageProperties> HelpAsync()
+    {
+        if (Context.Guild is null)
+            return EmbedTheme.ErrorCard("Команда доступна только на сервере.");
+
+        if (!await ModeratorGuard.IsModeratorAsync(Context.User, Context.Guild, Context.Guild.Id, Context.Client.Rest))
+            return ModeratorGuard.AccessDeniedCard();
+
+        return HelpSectionBuilder.BuildMessage("overview", ephemeral: true);
+    }
 }
 
 internal static class HelpSectionBuilder

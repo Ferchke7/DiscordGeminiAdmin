@@ -14,6 +14,12 @@ public sealed class StructureProposalButtons(IMessageBus bus) : ComponentInterac
     [ComponentInteraction("proposal-approve")]
     public async Task ApproveAsync(Guid proposalId)
     {
+        if (!await ModeratorGuard.IsModeratorAsync(Context.User, Context.Guild, Context.Guild?.Id, Context.Client.Rest))
+        {
+            await RespondAsync(InteractionCallback.Message(ModeratorGuard.AccessDeniedCard()));
+            return;
+        }
+
         await RespondAsync(InteractionCallback.DeferredMessage(MessageFlags.Ephemeral));
 
         var result = await bus.InvokeAsync<Result>(new ApproveProposal(proposalId));
@@ -27,6 +33,9 @@ public sealed class StructureProposalButtons(IMessageBus bus) : ComponentInterac
     [ComponentInteraction("proposal-reject")]
     public async Task<InteractionMessageProperties> RejectAsync(Guid proposalId)
     {
+        if (!await ModeratorGuard.IsModeratorAsync(Context.User, Context.Guild, Context.Guild?.Id, Context.Client.Rest))
+            return ModeratorGuard.AccessDeniedCard();
+
         var result = await bus.InvokeAsync<Result>(new RejectProposal(proposalId));
         return result.IsSuccess
             ? EmbedTheme.Card("✖️ План структуры отклонён", "Изменения не были применены к серверу.", EmbedTheme.Warning)

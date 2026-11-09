@@ -17,6 +17,9 @@ public sealed class DigestButtons(IMessageBus bus) : ComponentInteractionModule<
     [ComponentInteraction("ban")]
     public async Task<InteractionMessageProperties> BanAsync(Guid caseId)
     {
+        if (!await ModeratorGuard.IsModeratorAsync(Context.User, Context.Guild, Context.Guild?.Id, Context.Client.Rest))
+            return ModeratorGuard.AccessDeniedCard();
+
         var result = await bus.InvokeAsync<Result>(new BanMember(caseId, BanSource.Moderator));
         return Reply(result, "Участник забанен", "Кейс закрыт, а прецедент нарушения сохранён в векторную базу RAG.");
     }
@@ -24,6 +27,9 @@ public sealed class DigestButtons(IMessageBus bus) : ComponentInteractionModule<
     [ComponentInteraction("kick")]
     public async Task<InteractionMessageProperties> KickAsync(Guid caseId)
     {
+        if (!await ModeratorGuard.IsModeratorAsync(Context.User, Context.Guild, Context.Guild?.Id, Context.Client.Rest))
+            return ModeratorGuard.AccessDeniedCard();
+
         var result = await bus.InvokeAsync<Result>(new KickMember(caseId));
         return Reply(result, "Участник кикнут", "Участник исключён с сервера по решению модератора.");
     }
@@ -31,6 +37,9 @@ public sealed class DigestButtons(IMessageBus bus) : ComponentInteractionModule<
     [ComponentInteraction("timeout")]
     public async Task<InteractionMessageProperties> TimeoutAsync(Guid caseId)
     {
+        if (!await ModeratorGuard.IsModeratorAsync(Context.User, Context.Guild, Context.Guild?.Id, Context.Client.Rest))
+            return ModeratorGuard.AccessDeniedCard();
+
         var result = await bus.InvokeAsync<Result>(new TimeoutMember(caseId, TimeSpan.FromHours(1)));
         return Reply(result, "Выдан таймаут на 1 час", "Участник временно переведён в режим чтения.");
     }
@@ -38,6 +47,9 @@ public sealed class DigestButtons(IMessageBus bus) : ComponentInteractionModule<
     [ComponentInteraction("dismiss")]
     public async Task<InteractionMessageProperties> DismissAsync(Guid caseId)
     {
+        if (!await ModeratorGuard.IsModeratorAsync(Context.User, Context.Guild, Context.Guild?.Id, Context.Client.Rest))
+            return ModeratorGuard.AccessDeniedCard();
+
         var result = await bus.InvokeAsync<Result>(new DismissCase(caseId));
         return Reply(result, "Кейс отклонён (Игнор)", "Ложное срабатывание записано в RAG — ИИ учтёт это при следующих проверках.");
     }
@@ -45,6 +57,9 @@ public sealed class DigestButtons(IMessageBus bus) : ComponentInteractionModule<
     [ComponentInteraction("unban")]
     public async Task<InteractionMessageProperties> UnbanAsync(Guid caseId)
     {
+        if (!await ModeratorGuard.IsModeratorAsync(Context.User, Context.Guild, Context.Guild?.Id, Context.Client.Rest))
+            return ModeratorGuard.AccessDeniedCard();
+
         var result = await bus.InvokeAsync<Result>(new RevertBan(caseId));
         return Reply(result, "Бан снят", "Пользователь разблокирован, а отмена авто-бана сохранена в прецеденты RAG.");
     }
