@@ -22,6 +22,7 @@ public static class MusicQueryHelper
 
     public static bool HasSearchPrefix(string query) =>
         query.StartsWith("ytsearch:", StringComparison.OrdinalIgnoreCase)
+        || query.StartsWith("ytmsearch:", StringComparison.OrdinalIgnoreCase)
         || query.StartsWith("scsearch:", StringComparison.OrdinalIgnoreCase)
         || query.StartsWith("spsearch:", StringComparison.OrdinalIgnoreCase)
         || query.StartsWith("ymsearch:", StringComparison.OrdinalIgnoreCase);

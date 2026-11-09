@@ -37,14 +37,16 @@ plugins:
     allowDirectPlaylistIds: true
     clients:
       - MUSIC
-      - ANDROID_VR
-      - WEB
+      - ANDROID_MUSIC
+      - IOS
+      - MWEB
+      - TVHTML5_SIMPLY
       - WEBEMBEDDED
-      - TV
+      - WEB
   lavasrc:
     providers:
-      - "ytsearch:\"%ISRC%\""
-      - "ytsearch:%QUERY%"
+      - "ytmsearch:\"%ISRC%\""
+      - "ytmsearch:%QUERY%"
     sources:
       spotify: false
       applemusic: false

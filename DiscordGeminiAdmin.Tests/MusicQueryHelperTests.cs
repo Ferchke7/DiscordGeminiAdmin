@@ -32,11 +32,24 @@ public sealed class MusicQueryHelperTests
 
     [Theory]
     [InlineData("ytsearch:eminem", true)]
+    [InlineData("ytmsearch:eminem", true)]
     [InlineData("scsearch:eminem", true)]
     [InlineData("ymsearch:eminem", true)]
     [InlineData("eminem", false)]
     public void HasSearchPrefix_ShouldIdentifySearchPrefixes(string input, bool expected)
     {
         Assert.Equal(expected, MusicQueryHelper.HasSearchPrefix(input));
+    }
+
+    [Fact]
+    public void CheckTrackSearchModes()
+    {
+        var names = typeof(Lavalink4NET.Rest.Entities.Tracks.TrackSearchMode)
+            .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+            .Select(p => p.Name)
+            .ToArray();
+        Assert.Contains("YouTube", names);
+        Assert.Contains("YouTubeMusic", names);
+        Assert.Contains("SoundCloud", names);
     }
 }

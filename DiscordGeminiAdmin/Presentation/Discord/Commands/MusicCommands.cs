@@ -68,8 +68,18 @@ public sealed class MusicCommands(IAudioService audioService) : ApplicationComma
 
         var isUrl = MusicQueryHelper.IsUrl(cleanQuery);
         var hasSearchPrefix = MusicQueryHelper.HasSearchPrefix(cleanQuery);
-        var loadMode = (isUrl || hasSearchPrefix) ? TrackSearchMode.None : TrackSearchMode.YouTube;
+        var loadMode = (isUrl || hasSearchPrefix) ? TrackSearchMode.None : TrackSearchMode.YouTubeMusic;
         var searchResult = await audioService.Tracks.LoadTracksAsync(cleanQuery, loadMode);
+
+        if ((!searchResult.HasMatches || searchResult.IsFailed) && !isUrl && !hasSearchPrefix)
+        {
+            searchResult = await audioService.Tracks.LoadTracksAsync(cleanQuery, TrackSearchMode.YouTube);
+        }
+
+        if ((!searchResult.HasMatches || searchResult.IsFailed) && !isUrl && !hasSearchPrefix)
+        {
+            searchResult = await audioService.Tracks.LoadTracksAsync(cleanQuery, TrackSearchMode.SoundCloud);
+        }
 
         if (!searchResult.HasMatches || searchResult.IsFailed)
         {

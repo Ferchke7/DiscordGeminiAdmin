@@ -167,8 +167,18 @@ public sealed partial class MessageCreateGatewayHandler(
 
             var isUrl = MusicQueryHelper.IsUrl(query);
             var hasSearchPrefix = MusicQueryHelper.HasSearchPrefix(query);
-            var loadMode = (isUrl || hasSearchPrefix) ? TrackSearchMode.None : TrackSearchMode.YouTube;
+            var loadMode = (isUrl || hasSearchPrefix) ? TrackSearchMode.None : TrackSearchMode.YouTubeMusic;
             var searchResult = await audioService.Tracks.LoadTracksAsync(query, loadMode);
+
+            if ((!searchResult.HasMatches || searchResult.IsFailed) && !isUrl && !hasSearchPrefix)
+            {
+                searchResult = await audioService.Tracks.LoadTracksAsync(query, TrackSearchMode.YouTube);
+            }
+
+            if ((!searchResult.HasMatches || searchResult.IsFailed) && !isUrl && !hasSearchPrefix)
+            {
+                searchResult = await audioService.Tracks.LoadTracksAsync(query, TrackSearchMode.SoundCloud);
+            }
 
             if (!searchResult.HasMatches || searchResult.IsFailed)
             {
