@@ -36,7 +36,7 @@ public sealed class OrganizeCommands(IMessageBus bus) : ApplicationCommandModule
         return true;
     }
 
-    [SlashCommand("setup", "Поднять сервер под тематику: ИИ сразу создаст группы, голосовые, текстовые каналы с описаниями и роли")]
+    [SlashCommand("setup", "Поднять сервер: ИИ создаст группы, голосовые, текстовые каналы с описаниями и роли")]
     public async Task SetupAsync(
         [SlashCommandParameter(Name = "theme", Description = "Тематика и пожелания (например: Айти сообщество, созвоны, бэкенд и фронтенд)")] string theme,
         [SlashCommandParameter(Name = "reset", Description = "Удалить старые каналы, группы и роли перед созданием новых")] bool reset = false)
@@ -66,9 +66,9 @@ public sealed class OrganizeCommands(IMessageBus bus) : ApplicationCommandModule
             result.Value));
     }
 
-    [SlashCommand("reset-setup", "Удалить все старые каналы, группы и роли и заново пересобрать сервер с полными описаниями")]
+    [SlashCommand("reset-setup", "Удалить старые каналы, группы и роли и заново пересобрать сервер с описаниями")]
     public async Task ResetSetupAsync(
-        [SlashCommandParameter(Name = "theme", Description = "Новая тематика и пожелания (оставьте пустым, чтобы пересобрать по текущей тематике)")] string? theme = null)
+        [SlashCommandParameter(Name = "theme", Description = "Новая тематика (оставьте пустым, чтобы пересобрать по текущей тематике)")] string? theme = null)
     {
         if (!await EnsureModeratorAsync())
             return;

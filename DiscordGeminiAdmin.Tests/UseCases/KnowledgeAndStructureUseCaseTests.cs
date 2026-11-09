@@ -108,4 +108,33 @@ public class KnowledgeAndStructureUseCaseTests
         parsedStructure.IsSuccess.ShouldBeTrue();
         parsedStructure.Value.Changes.ShouldHaveSingleItem().Kind.ShouldBe(ProposedChangeKind.CreateCategory);
     }
+
+    [Fact]
+    public void AllSlashCommandDescriptions_ShouldNotExceedDiscord100CharLimit()
+    {
+        var assembly = typeof(DiscordGeminiAdmin.Presentation.Discord.Commands.OrganizeCommands).Assembly;
+        foreach (var type in assembly.GetTypes())
+        {
+            foreach (var method in type.GetMethods())
+            {
+                foreach (var attr in method.GetCustomAttributes(typeof(NetCord.Services.ApplicationCommands.SlashCommandAttribute), false)
+                             .Cast<NetCord.Services.ApplicationCommands.SlashCommandAttribute>())
+                {
+                    attr.Description.Length.ShouldBeLessThanOrEqualTo(100, $"Command /{attr.Name} description exceeds 100 chars ({attr.Description.Length})");
+                }
+
+                foreach (var param in method.GetParameters())
+                {
+                    foreach (var pAttr in param.GetCustomAttributes(typeof(NetCord.Services.ApplicationCommands.SlashCommandParameterAttribute), false)
+                                 .Cast<NetCord.Services.ApplicationCommands.SlashCommandParameterAttribute>())
+                    {
+                        if (pAttr.Description is not null)
+                        {
+                            pAttr.Description.Length.ShouldBeLessThanOrEqualTo(100, $"Parameter {param.Name} on {method.Name} exceeds 100 chars ({pAttr.Description.Length})");
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
