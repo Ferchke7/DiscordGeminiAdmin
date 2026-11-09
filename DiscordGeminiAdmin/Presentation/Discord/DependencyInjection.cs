@@ -22,7 +22,8 @@ public static class DependencyInjection
                                   | GatewayIntents.GuildMessages
                                   | GatewayIntents.MessageContent
                                   | GatewayIntents.GuildUsers
-                                  | GatewayIntents.GuildModeration;
+                                  | GatewayIntents.GuildModeration
+                                  | GatewayIntents.GuildVoiceStates;
             });
             var errorHandler = new DiscordErrorResultHandler();
             services.AddApplicationCommands(options =>

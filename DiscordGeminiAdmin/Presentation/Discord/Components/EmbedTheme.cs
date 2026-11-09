@@ -7,6 +7,7 @@ namespace DiscordGeminiAdmin.Presentation.Discord.Components;
 internal static class EmbedTheme
 {
     public const int Primary = 0x5865F2;
+    public const int Secondary = 0x4F545C;
     public const int Success = 0x2ECC71;
     public const int Warning = 0xF39C12;
     public const int Danger = 0xE74C3C;

@@ -8,6 +8,12 @@ using DiscordGeminiAdmin.Presentation.Discord.Commands;
 using DiscordGeminiAdmin.Presentation.Discord.Components;
 using DiscordGeminiAdmin.SharedKernel;
 using FluentResults;
+using Lavalink4NET;
+using Lavalink4NET.Extensions;
+using Lavalink4NET.Players;
+using Lavalink4NET.Players.Queued;
+using Lavalink4NET.Rest.Entities.Tracks;
+using Lavalink4NET.Tracks;
 using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
 using NetCord.Rest;
@@ -17,12 +23,13 @@ namespace DiscordGeminiAdmin.Presentation.Discord.Events;
 
 /// <summary>
 /// Обрабатывает входящие сообщения в каналах:
-/// 1) Мгновенно выполняет просьбы к боту (@Code-Guru ..., /setup ..., /ai ..., /help, /server).
+/// 1) Мгновенно выполняет просьбы к боту (@Code-Guru ..., /setup ..., /ai ..., /help, /server, !play, !stop).
 /// 2) Буферизует обычные сообщения участников для последующего часового ИИ-анализа.
 /// </summary>
 public sealed partial class MessageCreateGatewayHandler(
     IServiceScopeFactory scopeFactory,
     RestClient restClient,
+    IAudioService audioService,
     ILogger<MessageCreateGatewayHandler> logger) : IMessageCreateGatewayHandler
 {
     private static readonly DateTime StartedAtUtc = DateTime.UtcNow;
@@ -86,6 +93,9 @@ public sealed partial class MessageCreateGatewayHandler(
         var lower = raw.ToLowerInvariant();
         var isCommandOrMention =
             lower is "/help" or "!help" or "!помощь" or "/помощь" or "/server" or "!server" or "/status" or "!status" or "/info" or "!info"
+            || lower is "!stop" or "/stop" or "!skip" or "/skip" or "!now" or "/now" or "!queue" or "/queue"
+            || lower.StartsWith("!play", StringComparison.Ordinal)
+            || lower.StartsWith("/play", StringComparison.Ordinal)
             || lower.StartsWith("/help ", StringComparison.Ordinal)
             || lower.StartsWith("!help ", StringComparison.Ordinal)
             || lower.StartsWith("/setup", StringComparison.Ordinal)
@@ -113,6 +123,93 @@ public sealed partial class MessageCreateGatewayHandler(
             await restClient.SendMessageAsync(
                 message.ChannelId,
                 EmbedTheme.ToChannelMessage(ModeratorGuard.AccessDeniedCard()));
+            return true;
+        }
+
+        // 0. Музыкальные текстовые команды (!play, !stop, !skip, !now, !queue)
+        if (lower.StartsWith("!play", StringComparison.Ordinal) || lower.StartsWith("/play ", StringComparison.Ordinal))
+        {
+            var query = raw.Contains(' ') ? raw[(raw.IndexOf(' ') + 1)..].Trim() : string.Empty;
+            if (string.IsNullOrWhiteSpace(query))
+            {
+                await restClient.SendMessageAsync(message.ChannelId, EmbedTheme.ToChannelMessage(
+                    EmbedTheme.ErrorCard("Укажите ссылку на трек, плейлист или поисковый запрос (например: `!play eminem`)")));
+                return true;
+            }
+
+            var player = await audioService.Players.GetPlayerAsync<QueuedLavalinkPlayer>(guildId.Value);
+            var isUrl = query.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                        query.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+
+            var loadMode = isUrl ? TrackSearchMode.None : TrackSearchMode.YouTube;
+            var searchResult = await audioService.Tracks.LoadTracksAsync(query, loadMode);
+
+            if (!searchResult.HasMatches || searchResult.IsFailed)
+            {
+                await restClient.SendMessageAsync(message.ChannelId, EmbedTheme.ToChannelMessage(
+                    EmbedTheme.ErrorCard($"По запросу «{query}» ничего не найдено.")));
+                return true;
+            }
+
+            if (player is null)
+            {
+                await restClient.SendMessageAsync(message.ChannelId, EmbedTheme.ToChannelMessage(
+                    EmbedTheme.ErrorCard("Используйте слэш-команду `/play`, чтобы бот определил ваш голосовой канал и подключился к нему.")));
+                return true;
+            }
+
+            if (searchResult.IsPlaylist)
+            {
+                var playlistTracks = searchResult.Tracks;
+                await player.PlayAsync(playlistTracks[0]);
+                if (playlistTracks.Length > 1)
+                {
+                    var remaining = playlistTracks.Skip(1).Select(t => (ITrackQueueItem)new TrackQueueItem(t));
+                    await player.Queue.InsertRangeAsync(player.Queue.Count, remaining);
+                }
+
+                var totalDuration = TimeSpan.FromSeconds(playlistTracks.Sum(t => t.Duration.TotalSeconds));
+                var card = EmbedTheme.Card(
+                    $"🎶 Добавлен плейлист: {searchResult.Playlist.Name}",
+                    $"Загружено треков: **`{playlistTracks.Length}`**\nОбщая длительность: **`{totalDuration:hh\\:mm\\:ss}`**",
+                    EmbedTheme.Purple);
+                await restClient.SendMessageAsync(message.ChannelId, EmbedTheme.ToChannelMessage(card));
+                return true;
+            }
+
+            var track = searchResult.Track ?? searchResult.Tracks[0];
+            var pos = await player.PlayAsync(track);
+            var resultCard = pos == 0
+                ? EmbedTheme.SuccessCard("▶️ Сейчас играет", $"**`{track.Title}`** ({track.Author})")
+                : EmbedTheme.Card("📝 Добавлено в очередь", $"**`{track.Title}`** ({track.Author}) — позиция #{pos}", EmbedTheme.Primary);
+
+            await restClient.SendMessageAsync(message.ChannelId, EmbedTheme.ToChannelMessage(resultCard));
+            return true;
+        }
+
+        if (lower is "!stop" or "/stop")
+        {
+            var player = await audioService.Players.GetPlayerAsync<QueuedLavalinkPlayer>(guildId.Value);
+            if (player is not null)
+            {
+                await player.StopAsync();
+                await player.DisconnectAsync();
+                await restClient.SendMessageAsync(message.ChannelId, EmbedTheme.ToChannelMessage(
+                    EmbedTheme.Card("⏹️ Плеер остановлен", "Очередь очищена, бот отключился от канала.", EmbedTheme.Warning)));
+            }
+            return true;
+        }
+
+        if (lower is "!skip" or "/skip")
+        {
+            var player = await audioService.Players.GetPlayerAsync<QueuedLavalinkPlayer>(guildId.Value);
+            if (player is not null && player.CurrentTrack is not null)
+            {
+                var skipped = player.CurrentTrack.Title;
+                await player.SkipAsync();
+                await restClient.SendMessageAsync(message.ChannelId, EmbedTheme.ToChannelMessage(
+                    EmbedTheme.SuccessCard("⏭️ Трек пропущен", $"Пропущен: **`{skipped}`**")));
+            }
             return true;
         }
 

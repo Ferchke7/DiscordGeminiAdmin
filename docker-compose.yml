@@ -17,6 +17,20 @@ services:
       timeout: 5s
       retries: 10
 
+  dga-lavalink:
+    image: ghcr.io/lavalink-devs/lavalink:4
+    container_name: dga-lavalink
+    restart: unless-stopped
+    environment:
+      - _JAVA_OPTIONS=-Xmx512M
+      - LAVALINK_PASSWORD=${LAVALINK_PASSWORD:-youshallnotpass}
+      - YANDEX_MUSIC_TOKEN=${YANDEX_MUSIC_TOKEN:-}
+    volumes:
+      - ./lavalink/application.yml:/opt/Lavalink/application.yml
+      - dga-lavalink-plugins:/opt/Lavalink/plugins
+    ports:
+      - "127.0.0.1:2333:2333"
+
   dga-bot:
     image: ${IMAGE_NAME:-ghcr.io/ferchke7/discordgeminiadmin}:${IMAGE_TAG:-latest}
     build:
@@ -27,6 +41,8 @@ services:
     depends_on:
       dga-db:
         condition: service_healthy
+      dga-lavalink:
+        condition: service_started
     env_file:
       - .env
     environment:
@@ -38,6 +54,9 @@ services:
       Gemini__Models__Structure: ${Gemini__Models__Structure:-${GEMINI_STRUCTURE_MODEL:-gemini-2.5-pro}}
       Gemini__Models__Embedding: ${Gemini__Models__Embedding:-${GEMINI_EMBEDDING_MODEL:-gemini-embedding-001}}
       Gemini__EmbeddingDimensions: ${Gemini__EmbeddingDimensions:-${GEMINI_EMBEDDING_DIMENSIONS:-768}}
+      Lavalink__BaseAddress: ${Lavalink__BaseAddress:-http://dga-lavalink:2333}
+      Lavalink__WebSocketAddress: ${Lavalink__WebSocketAddress:-ws://dga-lavalink:2333/v4/websocket}
+      Lavalink__Passphrase: ${Lavalink__Passphrase:-${LAVALINK_PASSWORD:-youshallnotpass}}
       AutoBan__Enabled: ${AutoBan__Enabled:-${AUTOBAN_ENABLED:-true}}
       AutoBan__DryRun: ${AutoBan__DryRun:-${AUTOBAN_DRY_RUN:-true}}
       AutoBan__MinConfidence: ${AutoBan__MinConfidence:-${AUTOBAN_MIN_CONFIDENCE:-0.95}}
@@ -48,3 +67,4 @@ services:
 
 volumes:
   dga-postgres-data:
+  dga-lavalink-plugins:

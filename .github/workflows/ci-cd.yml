@@ -137,6 +137,8 @@ jobs:
           AUTOBAN_MAX_PER_HOUR: ${{ vars.AUTOBAN_MAX_PER_HOUR || '3' }}
           DIGEST_CRON: ${{ vars.DIGEST_CRON || '0 * * * *' }}
           RETENTION_HOURS: ${{ vars.RETENTION_HOURS || '48' }}
+          LAVALINK_PASSWORD: ${{ secrets.LAVALINK_PASSWORD || 'youshallnotpass' }}
+          YANDEX_MUSIC_TOKEN: ${{ secrets.YANDEX_MUSIC_TOKEN || vars.YANDEX_MUSIC_TOKEN || '' }}
         run: |
           install -m 600 /dev/null deploy.env
           {
@@ -161,6 +163,11 @@ jobs:
             printf 'AutoBan__MaxPerHour=%s\n' "${AUTOBAN_MAX_PER_HOUR}"
             printf 'Digest__Cron=%s\n' "${DIGEST_CRON}"
             printf 'Retention__MessageBufferHours=%s\n' "${RETENTION_HOURS}"
+            printf 'LAVALINK_PASSWORD=%s\n' "${LAVALINK_PASSWORD}"
+            printf 'YANDEX_MUSIC_TOKEN=%s\n' "${YANDEX_MUSIC_TOKEN}"
+            printf 'Lavalink__BaseAddress=http://dga-lavalink:2333\n'
+            printf 'Lavalink__WebSocketAddress=ws://dga-lavalink:2333/v4/websocket\n'
+            printf 'Lavalink__Passphrase=%s\n' "${LAVALINK_PASSWORD}"
           } > deploy.env
 
       - name: Upload deployment files & start services
@@ -173,14 +180,14 @@ jobs:
           GHCR_USER: ${{ secrets.GHCR_USER || github.actor }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
-          ssh -i ~/.ssh/id_dga_deploy -p "${VPS_PORT}" "${VPS_USER}@${VPS_HOST}" "mkdir -p ${DEPLOY_PATH}"
-          scp -i ~/.ssh/id_dga_deploy -P "${VPS_PORT}" docker-compose.yml deploy.env "${VPS_USER}@${VPS_HOST}:${DEPLOY_PATH}/"
+          ssh -i ~/.ssh/id_dga_deploy -p "${VPS_PORT}" "${VPS_USER}@${VPS_HOST}" "mkdir -p ${DEPLOY_PATH}/lavalink"
+          scp -i ~/.ssh/id_dga_deploy -P "${VPS_PORT}" -r docker-compose.yml deploy.env lavalink "${VPS_USER}@${VPS_HOST}:${DEPLOY_PATH}/"
           ssh -i ~/.ssh/id_dga_deploy -p "${VPS_PORT}" "${VPS_USER}@${VPS_HOST}" \
             "cd ${DEPLOY_PATH} && \
             mv deploy.env .env && \
             chmod 600 .env && \
             printf '%s' '${GHCR_TOKEN}' | docker login ghcr.io -u '${GHCR_USER}' --password-stdin && \
-            docker compose pull dga-db dga-bot && \
+            docker compose pull dga-db dga-bot dga-lavalink && \
             docker compose up -d --remove-orphans && \
             sleep 5 && \
             docker ps --filter 'name=dga' --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' && \

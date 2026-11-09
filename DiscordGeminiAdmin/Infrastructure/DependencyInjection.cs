@@ -1,4 +1,5 @@
 using DiscordGeminiAdmin.Infrastructure.Ai.Gemini;
+using DiscordGeminiAdmin.Infrastructure.Audio;
 using DiscordGeminiAdmin.Infrastructure.BackgroundJobs;
 using DiscordGeminiAdmin.Infrastructure.Discord;
 using DiscordGeminiAdmin.Infrastructure.Knowledge;
@@ -18,6 +19,7 @@ public static class DependencyInjection
                 .AddGeminiAi(configuration)
                 .AddKnowledge()
                 .AddDiscordAdapters()
+                .AddAudio(configuration)
                 .AddMessaging(configuration)
                 .AddBackgroundJobs(configuration);
         }
