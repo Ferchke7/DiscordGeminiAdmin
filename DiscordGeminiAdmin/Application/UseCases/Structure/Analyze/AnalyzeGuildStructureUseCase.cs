@@ -18,7 +18,8 @@ public sealed record AnalyzeGuildStructure(
     ChannelId? FallbackChannelId = null,
     bool ApplyImmediately = false,
     string? NewTheme = null,
-    bool IncludeChannelHistory = false);
+    bool IncludeChannelHistory = false,
+    bool ResetExisting = false);
 
 public static class AnalyzeGuildStructureUseCase
 {
@@ -60,14 +61,25 @@ public static class AnalyzeGuildStructureUseCase
             : profile?.Theme.Value ?? command.Goal ?? "Современное IT и Discord-сообщество";
         var targetChannelId = profile?.ModChannelId ?? command.FallbackChannelId!.Value;
 
+        if (command.ResetExisting)
+        {
+            var resetResult = await gateway.ResetGuildStructureAsync(command.GuildId, command.FallbackChannelId, cancellationToken);
+            if (resetResult.IsFailed)
+                return resetResult.ToResult<StructureProposal>();
+        }
+
         var structureSnapshot = await gateway.GetGuildStructureAsync(command.GuildId, cancellationToken);
         if (structureSnapshot.IsFailed)
             return structureSnapshot.ToResult();
 
+        var effectiveSnapshot = command.ResetExisting
+            ? new GuildStructureSnapshot(command.GuildId, structureSnapshot.Value.GuildName, [], [], [])
+            : structureSnapshot.Value;
+
         var knowledge = await knowledgeIndex.GetRulesAndPrecedentsAsync(command.GuildId, 20, cancellationToken);
 
         IReadOnlyList<string>? recentHistory = null;
-        var wantsHistory = command.IncludeChannelHistory || ContainsHistoryKeywords(command.Goal);
+        var wantsHistory = !command.ResetExisting && (command.IncludeChannelHistory || ContainsHistoryKeywords(command.Goal));
         if (wantsHistory && command.FallbackChannelId is { } historyChannelId)
         {
             var historyRes = await gateway.GetRecentChannelHistoryAsync(historyChannelId, 35, cancellationToken);
@@ -80,7 +92,7 @@ public static class AnalyzeGuildStructureUseCase
                 command.GuildId,
                 theme,
                 command.Goal,
-                structureSnapshot.Value,
+                effectiveSnapshot,
                 knowledge,
                 recentHistory),
             cancellationToken);

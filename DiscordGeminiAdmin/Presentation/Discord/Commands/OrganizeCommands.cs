@@ -36,22 +36,24 @@ public sealed class OrganizeCommands(IMessageBus bus) : ApplicationCommandModule
         return true;
     }
 
-    [SlashCommand("setup", "Поднять сервер под тематику: ИИ сразу создаст группы, голосовые, текстовые каналы и роли")]
+    [SlashCommand("setup", "Поднять сервер под тематику: ИИ сразу создаст группы, голосовые, текстовые каналы с описаниями и роли")]
     public async Task SetupAsync(
-        [SlashCommandParameter(Name = "theme", Description = "Тематика и пожелания (например: Айти сообщество, созвоны, бэкенд и фронтенд)")] string theme)
+        [SlashCommandParameter(Name = "theme", Description = "Тематика и пожелания (например: Айти сообщество, созвоны, бэкенд и фронтенд)")] string theme,
+        [SlashCommandParameter(Name = "reset", Description = "Удалить старые каналы, группы и роли перед созданием новых")] bool reset = false)
     {
         if (!await EnsureModeratorAsync())
             return;
 
         await RespondAsync(InteractionCallback.DeferredMessage());
 
-        var goal = $"Подними и организуй сервер под тематику «{theme}»: создай удобные группы (категории), текстовые каналы, голосовые комнаты для общения/созвонов и базовые роли.";
+        var goal = $"Подними и организуй сервер под тематику «{theme}»: создай удобные группы (категории), текстовые каналы с подробными описаниями и правилами внутри каждого канала, голосовые комнаты для общения/созвонов и базовые роли.";
         var result = await bus.InvokeAsync<Result<StructureProposal>>(new AnalyzeGuildStructure(
             GuildId.From(Context.Guild!.Id),
             Goal: goal,
             FallbackChannelId: ChannelId.From(Context.Channel.Id),
             ApplyImmediately: true,
-            NewTheme: theme));
+            NewTheme: theme,
+            ResetExisting: reset));
 
         if (result.IsFailed)
         {
@@ -60,7 +62,40 @@ public sealed class OrganizeCommands(IMessageBus bus) : ApplicationCommandModule
         }
 
         await FollowupAsync(BuildAppliedStructureCard(
-            $"🚀 Сервер настроен под тематику: {theme}",
+            reset ? $"🔄 Сервер полностью пересобран: {theme}" : $"🚀 Сервер настроен под тематику: {theme}",
+            result.Value));
+    }
+
+    [SlashCommand("reset-setup", "Удалить все старые каналы, группы и роли и заново пересобрать сервер с полными описаниями")]
+    public async Task ResetSetupAsync(
+        [SlashCommandParameter(Name = "theme", Description = "Новая тематика и пожелания (оставьте пустым, чтобы пересобрать по текущей тематике)")] string? theme = null)
+    {
+        if (!await EnsureModeratorAsync())
+            return;
+
+        await RespondAsync(InteractionCallback.DeferredMessage());
+
+        var effectiveTheme = string.IsNullOrWhiteSpace(theme) ? null : theme.Trim();
+        var goal = effectiveTheme is not null
+            ? $"Полностью пересобери сервер с нуля под тематику «{effectiveTheme}»: создай категории, текстовые каналы (обязательно с подробными правилами и описаниями для каждого канала), голосовые комнаты и роли."
+            : "Полностью пересобери сервер с нуля под его тематику: создай категории, текстовые каналы (обязательно с подробными правилами и описаниями для каждого канала), голосовые комнаты и роли.";
+
+        var result = await bus.InvokeAsync<Result<StructureProposal>>(new AnalyzeGuildStructure(
+            GuildId.From(Context.Guild!.Id),
+            Goal: goal,
+            FallbackChannelId: ChannelId.From(Context.Channel.Id),
+            ApplyImmediately: true,
+            NewTheme: effectiveTheme,
+            ResetExisting: true));
+
+        if (result.IsFailed)
+        {
+            await FollowupAsync(EmbedTheme.ErrorCard(result, "Не удалось выполнить сброс и пересборку сервера"));
+            return;
+        }
+
+        await FollowupAsync(BuildAppliedStructureCard(
+            $"🔄 Сервер полностью очищен и пересобран{(effectiveTheme is not null ? $": {effectiveTheme}" : string.Empty)}",
             result.Value));
     }
 

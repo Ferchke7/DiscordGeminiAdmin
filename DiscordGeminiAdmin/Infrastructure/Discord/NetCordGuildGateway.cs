@@ -389,12 +389,13 @@ internal sealed class NetCordGuildGateway(
                 }
             }
 
+            var topicText = isVoice ? null : FormatChannelTopic(topic, reason);
             var props = new GuildChannelProperties(
                 name.Trim(),
                 isVoice ? ChannelType.VoiceGuildChannel : ChannelType.TextGuildChannel)
             {
                 ParentId = parentId,
-                Topic = topic
+                Topic = topicText
             };
 
             var created = await rest.CreateGuildChannelAsync(
@@ -402,6 +403,17 @@ internal sealed class NetCordGuildGateway(
                 props,
                 new RestRequestProperties { AuditLogReason = reason },
                 ct);
+
+            if (!isVoice)
+            {
+                await SendChannelDescriptionCardAsync(
+                    created.Id,
+                    name.Trim(),
+                    categoryName,
+                    topic,
+                    reason,
+                    ct);
+            }
 
             return Result.Ok(ChannelId.From(created.Id));
         }
@@ -549,6 +561,95 @@ internal sealed class NetCordGuildGateway(
         }
     }
 
+    public async Task<Result<int>> ResetGuildStructureAsync(
+        GuildId guildId,
+        ChannelId? keepChannelId,
+        CancellationToken ct)
+    {
+        try
+        {
+            var removedCount = 0;
+            var auditProps = new RestRequestProperties { AuditLogReason = "Полный сброс и пересборка сервера (/reset-setup)" };
+            var channels = (await rest.GetGuildChannelsAsync(guildId.Value, cancellationToken: ct)).ToList();
+
+            foreach (var ch in channels.Where(c => c is not CategoryGuildChannel && c.Id != keepChannelId?.Value))
+            {
+                try
+                {
+                    await rest.DeleteChannelAsync(ch.Id, auditProps, ct);
+                    removedCount++;
+                }
+                catch (RestException ex)
+                {
+                    logger.LogWarning(ex, "Пропущено удаление защищённого канала {ChannelId}", ch.Id);
+                }
+            }
+
+            if (keepChannelId.HasValue)
+            {
+                try
+                {
+                    await rest.ModifyGuildChannelAsync(
+                        keepChannelId.Value.Value,
+                        opts => opts.ParentId = null,
+                        auditProps,
+                        ct);
+                }
+                catch (RestException)
+                {
+                    // Игнорируем, если канал не в категории
+                }
+            }
+
+            foreach (var cat in channels.OfType<CategoryGuildChannel>())
+            {
+                try
+                {
+                    await rest.DeleteChannelAsync(cat.Id, auditProps, ct);
+                    removedCount++;
+                }
+                catch (RestException ex)
+                {
+                    logger.LogWarning(ex, "Пропущено удаление категории {CategoryId}", cat.Id);
+                }
+            }
+
+            var guild = await rest.GetGuildAsync(guildId.Value, cancellationToken: ct);
+            var self = await rest.GetCurrentUserAsync(cancellationToken: ct);
+            var botMember = await rest.GetGuildUserAsync(guildId.Value, self.Id, cancellationToken: ct);
+            var botTopPosition = botMember.RoleIds
+                .Select(id => guild.Roles.GetValueOrDefault(id))
+                .OfType<Role>()
+                .Select(r => r.Position)
+                .DefaultIfEmpty()
+                .Max();
+
+            foreach (var role in guild.Roles.Values.Where(r =>
+                         r.Id != guild.Id
+                         && !r.Managed
+                         && r.Position.CompareTo(botTopPosition) < 0
+                         && (r.Permissions & Permissions.Administrator) == 0))
+            {
+                try
+                {
+                    await rest.DeleteGuildRoleAsync(guildId.Value, role.Id, auditProps, ct);
+                    removedCount++;
+                }
+                catch (RestException ex)
+                {
+                    logger.LogWarning(ex, "Пропущено удаление роли {RoleId}", role.Id);
+                }
+            }
+
+            return Result.Ok(removedCount);
+        }
+        catch (RestException ex)
+        {
+            logger.LogWarning(ex, "Ошибка сброса структуры гильдии {GuildId}", guildId.Value);
+            return Result.Fail($"Не удалось очистить старую структуру сервера: {ex.Message}");
+        }
+    }
+
     public async Task<Result> ApplyStructureChangesAsync(
         GuildId guildId,
         IReadOnlyList<ProposedChange> changes,
@@ -611,24 +712,40 @@ internal sealed class NetCordGuildGateway(
                             parentId = existingCatId;
                         }
 
+                        var normalizedTarget = NormalizeChannelName(targetName);
                         var existingMatch = existingChannels.FirstOrDefault(c =>
                             c is not CategoryGuildChannel
                             && (isVoice ? c is VoiceGuildChannel : c is TextGuildChannel)
-                            && string.Equals(c.Name.Trim(), targetName, StringComparison.OrdinalIgnoreCase));
+                            && (string.Equals(c.Name.Trim(), targetName, StringComparison.OrdinalIgnoreCase)
+                                || string.Equals(NormalizeChannelName(c.Name), normalizedTarget, StringComparison.OrdinalIgnoreCase)));
+
+                        var topicText = isVoice ? null : FormatChannelTopic(step.NewNameOrTopic, step.Rationale);
 
                         if (existingMatch is not null)
                         {
-                            if (parentId.HasValue)
+                            if (parentId.HasValue || (!isVoice && !string.IsNullOrWhiteSpace(topicText)))
                             {
                                 await rest.ModifyGuildChannelAsync(
                                     existingMatch.Id,
                                     opts =>
                                     {
-                                        opts.ParentId = parentId.Value;
-                                        if (!isVoice && !string.IsNullOrWhiteSpace(step.NewNameOrTopic))
-                                            opts.Topic = step.NewNameOrTopic;
+                                        if (parentId.HasValue)
+                                            opts.ParentId = parentId.Value;
+                                        if (!isVoice && !string.IsNullOrWhiteSpace(topicText))
+                                            opts.Topic = topicText;
                                     },
                                     auditProps,
+                                    ct);
+                            }
+
+                            if (!isVoice)
+                            {
+                                await SendChannelDescriptionCardAsync(
+                                    existingMatch.Id,
+                                    existingMatch.Name,
+                                    step.ParentCategory,
+                                    step.NewNameOrTopic,
+                                    step.Rationale,
                                     ct);
                             }
                             break;
@@ -640,22 +757,49 @@ internal sealed class NetCordGuildGateway(
                         var props = new GuildChannelProperties(targetName, type)
                         {
                             ParentId = parentId,
-                            Topic = isVoice ? null : step.NewNameOrTopic
+                            Topic = topicText
                         };
                         var createdCh = await rest.CreateGuildChannelAsync(guildId.Value, props, auditProps, ct);
                         existingChannels.Add(createdCh);
+
+                        if (!isVoice)
+                        {
+                            await SendChannelDescriptionCardAsync(
+                                createdCh.Id,
+                                createdCh.Name,
+                                step.ParentCategory,
+                                step.NewNameOrTopic,
+                                step.Rationale,
+                                ct);
+                        }
                         break;
                     }
                     case ProposedChangeKind.UpdateChannelTopic:
                     {
-                        var target = existingChannels.FirstOrDefault(
-                            c => string.Equals(c.Name, targetName, StringComparison.OrdinalIgnoreCase));
-                        if (target is not null && !string.IsNullOrWhiteSpace(step.NewNameOrTopic))
+                        var normalizedTarget = NormalizeChannelName(targetName);
+                        var target = existingChannels.FirstOrDefault(c =>
+                            c is TextGuildChannel
+                            && (string.Equals(c.Name, targetName, StringComparison.OrdinalIgnoreCase)
+                                || string.Equals(NormalizeChannelName(c.Name), normalizedTarget, StringComparison.OrdinalIgnoreCase)));
+
+                        if (target is not null)
                         {
-                            await rest.ModifyGuildChannelAsync(
+                            var topicText = FormatChannelTopic(step.NewNameOrTopic, step.Rationale);
+                            if (!string.IsNullOrWhiteSpace(topicText))
+                            {
+                                await rest.ModifyGuildChannelAsync(
+                                    target.Id,
+                                    opts => opts.Topic = topicText,
+                                    auditProps,
+                                    ct);
+                            }
+
+                            await SendChannelDescriptionCardAsync(
                                 target.Id,
-                                opts => opts.Topic = step.NewNameOrTopic,
-                                auditProps,
+                                target.Name,
+                                step.ParentCategory,
+                                step.NewNameOrTopic,
+                                step.Rationale,
                                 ct);
                         }
                         break;
@@ -698,4 +842,77 @@ internal sealed class NetCordGuildGateway(
             return Result.Fail($"Discord отклонил одно из изменений структуры: {ex.Message}");
         }
     }
+
+    private async Task SendChannelDescriptionCardAsync(
+        ulong channelId,
+        string channelName,
+        string? categoryName,
+        string? description,
+        string? rationale,
+        CancellationToken ct)
+    {
+        try
+        {
+            var lowerName = channelName.ToLowerInvariant();
+            var (icon, color) = lowerName switch
+            {
+                _ when lowerName.Contains("правил") || lowerName.Contains("инфо") || lowerName.Contains("rules") || lowerName.Contains("info") => ("📜", 0x2ECC71),
+                _ when lowerName.Contains("новост") || lowerName.Contains("анонс") || lowerName.Contains("news") => ("📢", 0x9B59B6),
+                _ when lowerName.Contains("работ") || lowerName.Contains("ваканс") || lowerName.Contains("резюме") || lowerName.Contains("фриланс") => ("💼", 0xF1C40F),
+                _ when lowerName.Contains("код") || lowerName.Contains("бэкенд") || lowerName.Contains("фронтенд") || lowerName.Contains("devops") || lowerName.Contains("разработ") || lowerName.Contains("проект") => ("💻", 0x5865F2),
+                _ => ("📌", 0x5865F2)
+            };
+
+            var bodyText = !string.IsNullOrWhiteSpace(description)
+                ? description.Trim()
+                : !string.IsNullOrWhiteSpace(rationale)
+                    ? rationale.Trim()
+                    : $"Добро пожаловать в канал **#{channelName}**!";
+
+            if (!string.IsNullOrWhiteSpace(rationale)
+                && !string.IsNullOrWhiteSpace(description)
+                && !string.Equals(description.Trim(), rationale.Trim(), StringComparison.OrdinalIgnoreCase)
+                && !description.Contains(rationale.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                bodyText += $"\n\n> 💡 **Назначение канала:** {rationale.Trim()}";
+            }
+
+            if (bodyText.Length > 3800)
+                bodyText = bodyText[..3800] + "...";
+
+            var footerText = !string.IsNullOrWhiteSpace(categoryName)
+                ? $"Раздел: {categoryName.Trim()} • Настроено Code-Guru AI"
+                : "Настроено Code-Guru AI";
+
+            var embed = new EmbedProperties
+            {
+                Title = $"{icon} Добро пожаловать в #{channelName}",
+                Description = bodyText,
+                Color = new Color(color),
+                Timestamp = timeProvider.GetUtcNow(),
+                Footer = new EmbedFooterProperties { Text = footerText }
+            };
+
+            await rest.SendMessageAsync(
+                channelId,
+                new MessageProperties { Embeds = [embed] },
+                cancellationToken: ct);
+        }
+        catch (RestException ex)
+        {
+            logger.LogWarning(ex, "Не удалось отправить стартовое описание в канал {ChannelId}", channelId);
+        }
+    }
+
+    private static string? FormatChannelTopic(string? topic, string? fallbackRationale)
+    {
+        var raw = !string.IsNullOrWhiteSpace(topic) ? topic.Trim() : fallbackRationale?.Trim();
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+
+        return raw.Length > 950 ? raw[..950] + "..." : raw;
+    }
+
+    private static string NormalizeChannelName(string name) =>
+        name.Trim().Replace(' ', '-').ToLowerInvariant();
 }

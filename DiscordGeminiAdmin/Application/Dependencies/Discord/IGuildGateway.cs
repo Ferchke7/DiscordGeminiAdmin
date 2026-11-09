@@ -38,5 +38,6 @@ public interface IGuildGateway
     Task<Result<ulong>> CreateOrAssignRoleAsync(GuildId guildId, string roleName, MemberId? assignToMember, string reason, CancellationToken ct);
     Task<Result<IReadOnlyList<string>>> GetRecentChannelHistoryAsync(ChannelId channelId, int limit, CancellationToken ct);
     Task<Result<GuildStructureSnapshot>> GetGuildStructureAsync(GuildId guildId, CancellationToken ct);
+    Task<Result<int>> ResetGuildStructureAsync(GuildId guildId, ChannelId? keepChannelId, CancellationToken ct);
     Task<Result> ApplyStructureChangesAsync(GuildId guildId, IReadOnlyList<ProposedChange> changes, CancellationToken ct);
 }

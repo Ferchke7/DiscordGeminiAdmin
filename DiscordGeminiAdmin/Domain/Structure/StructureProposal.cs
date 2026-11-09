@@ -63,10 +63,14 @@ public sealed class StructureProposal(Guid id) : AggregationRoot<Guid>(id)
         if (changes.Count == 0)
             return Result.Fail(StructureErrors.EmptyProposal);
 
+        var safeSummary = summary.Trim();
+        if (safeSummary.Length > 1950)
+            safeSummary = safeSummary[..1950] + "...";
+
         return new StructureProposal(Guid.CreateVersion7())
         {
             GuildId = guildId,
-            Summary = summary.Trim(),
+            Summary = safeSummary,
             Changes = changes,
             CreatedAt = now
         };
