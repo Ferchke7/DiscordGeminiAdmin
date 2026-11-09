@@ -56,6 +56,18 @@ internal static class HelpSectionBuilder
                 },
                 new EmbedFieldProperties
                 {
+                    Name = "📰 Новости и Ветки обсуждения (Google Search + Gemini)",
+                    Value = """
+                        • **`/news`** `[topic]` `[thread]` — собрать свежие IT/технологические новости через Google Search и опубликовать с веткой обсуждения
+                        • **`/news-setup`** `[channel]` `[category]` — подготовить или создать специальный канал `#новости`
+                        • **`!news`** / **`!новости`** `[тема]` — быстрая публикация новостей через текстовую команду
+                        • **`!news thread`** `[тема]` — собрать и опубликовать новостной дайджест в ветку прямо в текущем канале
+                        • **`!news setup`** — быстрая настройка новостного канала
+                        """,
+                    Inline = false
+                },
+                new EmbedFieldProperties
+                {
                     Name = "🎵 Музыкальный плеер (YouTube, Яндекс.Музыка, плейлисты)",
                     Value = """
                         • **`/play`** `query` — включить трек или плейлист (YouTube, Яндекс.Музыка, SoundCloud, поиск)

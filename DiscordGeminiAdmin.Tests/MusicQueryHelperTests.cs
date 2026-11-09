@@ -52,4 +52,14 @@ public sealed class MusicQueryHelperTests
         Assert.Contains("YouTubeMusic", names);
         Assert.Contains("SoundCloud", names);
     }
+
+    [Fact]
+    public void CheckGoogleSearchTool()
+    {
+        var tool = new Google.GenAI.Types.Tool
+        {
+            GoogleSearch = new Google.GenAI.Types.GoogleSearch()
+        };
+        Assert.NotNull(tool.GoogleSearch);
+    }
 }

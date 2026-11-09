@@ -14,4 +14,5 @@ public sealed class GeminiModelSettings
     public string Moderation { get; init; } = "gemini-3.8-flash";
     public string Structure { get; init; } = "gemini-3.8-flash";
     public string Embedding { get; init; } = "gemini-embedding-001";
+    public string News { get; init; } = "gemini-3.8-flash";
 }

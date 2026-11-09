@@ -67,3 +67,23 @@ public interface IStructureAdvisorAi
         GuildStructureContext context,
         CancellationToken ct);
 }
+
+public sealed record NewsItemDto(
+    string Title,
+    string Summary,
+    string Significance,
+    string? SourceUrl);
+
+public sealed record NewsDigestDto(
+    string Headline,
+    string Introduction,
+    IReadOnlyList<NewsItemDto> Items,
+    string DiscussionQuestion);
+
+/// <summary>Порт ИИ для генерации свежих, интересных новостей с поисковым заземлением.</summary>
+public interface INewsGeneratorAi
+{
+    Task<Result<NewsDigestDto>> GenerateNewsDigestAsync(
+        string? themeOrTopic,
+        CancellationToken ct);
+}

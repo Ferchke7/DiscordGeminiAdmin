@@ -1,3 +1,4 @@
+using DiscordGeminiAdmin.Application.Dependencies.Ai;
 using DiscordGeminiAdmin.Application.Dependencies.Discord;
 using DiscordGeminiAdmin.Domain.Moderation;
 using DiscordGeminiAdmin.Domain.Structure;
@@ -901,6 +902,164 @@ internal sealed class NetCordGuildGateway(
         catch (RestException ex)
         {
             logger.LogWarning(ex, "Не удалось отправить стартовое описание в канал {ChannelId}", channelId);
+        }
+    }
+
+    public async Task<Result<ChannelId>> EnsureNewsChannelAsync(
+        GuildId guildId,
+        string? channelName,
+        string? categoryName,
+        CancellationToken ct)
+    {
+        try
+        {
+            var targetName = string.IsNullOrWhiteSpace(channelName) ? "новости" : NormalizeChannelName(channelName);
+            var channels = await rest.GetGuildChannelsAsync(guildId.Value, cancellationToken: ct);
+
+            var existing = channels.OfType<TextGuildChannel>().FirstOrDefault(c =>
+                string.Equals(c.Name, targetName, StringComparison.OrdinalIgnoreCase)
+                || c.Name.Contains("новост", StringComparison.OrdinalIgnoreCase)
+                || c.Name.Contains("news", StringComparison.OrdinalIgnoreCase)
+                || c.Name.Contains("дайджест", StringComparison.OrdinalIgnoreCase));
+
+            if (existing is not null)
+                return Result.Ok(ChannelId.From(existing.Id));
+
+            ulong? categoryId = null;
+            var targetCatName = string.IsNullOrWhiteSpace(categoryName) ? "📰 ИНФО И НОВОСТИ" : categoryName.Trim();
+            var existingCat = channels.OfType<CategoryGuildChannel>().FirstOrDefault(c =>
+                string.Equals(c.Name, targetCatName, StringComparison.OrdinalIgnoreCase)
+                || c.Name.Contains("новост", StringComparison.OrdinalIgnoreCase)
+                || c.Name.Contains("news", StringComparison.OrdinalIgnoreCase)
+                || c.Name.Contains("инфо", StringComparison.OrdinalIgnoreCase));
+
+            if (existingCat is not null)
+            {
+                categoryId = existingCat.Id;
+            }
+            else
+            {
+                var catProps = new GuildChannelProperties(targetCatName, ChannelType.CategoryChannel);
+                var createdCat = await rest.CreateGuildChannelAsync(
+                    guildId.Value,
+                    catProps,
+                    new RestRequestProperties { AuditLogReason = "Создание категории для новостей сервера" },
+                    ct);
+                categoryId = createdCat.Id;
+            }
+
+            var channelProps = new GuildChannelProperties(targetName, ChannelType.TextGuildChannel)
+            {
+                ParentId = categoryId,
+                Topic = "📰 Свежие новости IT, технологий, разработки ПО и искусственного интеллекта"
+            };
+
+            var createdChannel = await rest.CreateGuildChannelAsync(
+                guildId.Value,
+                channelProps,
+                new RestRequestProperties { AuditLogReason = "Создание канала для новостей и дайджестов" },
+                ct);
+
+            await SendChannelDescriptionCardAsync(
+                createdChannel.Id,
+                createdChannel.Name,
+                targetCatName,
+                "📰 Канал свежих новостей и технологических дайджестов",
+                "Здесь бот и модераторы публикуют самые интересные события, апдейты и открытия в IT, разработке и технологиях. Под каждой новостью автоматически создаётся ветка для обсуждения!",
+                ct);
+
+            return Result.Ok(ChannelId.From(createdChannel.Id));
+        }
+        catch (RestException ex)
+        {
+            logger.LogWarning(ex, "Ошибка при подготовке новостного канала на сервере {GuildId}", guildId.Value);
+            return Result.Fail($"Не удалось подготовить канал новостей: {ex.Message}");
+        }
+    }
+
+    public async Task<Result<NewsPublicationResult>> PublishNewsDigestAsync(
+        GuildId guildId,
+        ChannelId channelId,
+        NewsDigestDto digest,
+        bool createThread,
+        string? customThreadTitle,
+        CancellationToken ct)
+    {
+        try
+        {
+            var embed = new EmbedProperties
+            {
+                Title = digest.Headline.Length > 250 ? digest.Headline[..247] + "..." : digest.Headline,
+                Description = digest.Introduction,
+                Color = new Color(0x3498DB),
+                Timestamp = timeProvider.GetUtcNow(),
+                Footer = new EmbedFooterProperties
+                {
+                    Text = $"💬 Обсуждение в ветке • Code-Guru AI News"
+                }
+            };
+
+            var fields = new List<EmbedFieldProperties>();
+            foreach (var item in digest.Items.Take(10))
+            {
+                var fieldTitle = item.Title.Length > 250 ? item.Title[..247] + "..." : item.Title;
+                var sourcePart = !string.IsNullOrWhiteSpace(item.SourceUrl) ? $"\n🔗 [Читать источник]({item.SourceUrl})" : string.Empty;
+                var val = $"{item.Summary}\n\n💡 **Значение:** {item.Significance}{sourcePart}";
+                if (val.Length > 1024)
+                    val = val[..1020] + "...";
+
+                fields.Add(new EmbedFieldProperties
+                {
+                    Name = fieldTitle,
+                    Value = val,
+                    Inline = false
+                });
+            }
+            embed.Fields = fields;
+
+            var sent = await rest.SendMessageAsync(
+                channelId.Value,
+                new MessageProperties { Embeds = [embed] },
+                cancellationToken: ct);
+
+            ulong? threadId = null;
+            if (createThread)
+            {
+                try
+                {
+                    var threadTitle = !string.IsNullOrWhiteSpace(customThreadTitle)
+                        ? customThreadTitle.Trim()
+                        : $"💬 Обсуждение: {digest.Headline}";
+
+                    if (threadTitle.Length > 95)
+                        threadTitle = threadTitle[..92] + "...";
+
+                    var thread = await rest.CreateGuildThreadAsync(
+                        channelId.Value,
+                        sent.Id,
+                        new GuildThreadFromMessageProperties(threadTitle),
+                        cancellationToken: ct);
+
+                    threadId = thread.Id;
+
+                    var kickoff = new MessageProperties
+                    {
+                        Content = $"👋 **Ветка обсуждения новостей открыта!**\n\n> 💭 *{digest.DiscussionQuestion}*\n\nДелитесь вашими мнениями, вопросами и интересными мыслями прямо в этой ветке! 👇"
+                    };
+                    await rest.SendMessageAsync(thread.Id, kickoff, cancellationToken: ct);
+                }
+                catch (RestException threadEx)
+                {
+                    logger.LogWarning(threadEx, "Не удалось создать ветку обсуждения новостей в канале {ChannelId}", channelId.Value);
+                }
+            }
+
+            return Result.Ok(new NewsPublicationResult(channelId, sent.Id, threadId));
+        }
+        catch (RestException ex)
+        {
+            logger.LogWarning(ex, "Ошибка публикации новостей в канал {ChannelId}", channelId.Value);
+            return Result.Fail($"Ошибка отправки новостей в Discord: {ex.Message}");
         }
     }
 

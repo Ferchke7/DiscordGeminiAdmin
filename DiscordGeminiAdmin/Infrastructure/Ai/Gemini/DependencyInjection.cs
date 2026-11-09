@@ -22,6 +22,7 @@ public static class DependencyInjection
             services.AddScoped<IEmbeddingService, GeminiEmbeddingService>();
             services.AddScoped<IModerationAi, GeminiModerationAi>();
             services.AddScoped<IStructureAdvisorAi, GeminiStructureAdvisorAi>();
+            services.AddScoped<INewsGeneratorAi, GeminiNewsAi>();
             return services;
         }
     }

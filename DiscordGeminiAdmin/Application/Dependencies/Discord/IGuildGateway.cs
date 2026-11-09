@@ -1,9 +1,15 @@
+using DiscordGeminiAdmin.Application.Dependencies.Ai;
 using DiscordGeminiAdmin.Domain.Moderation;
 using DiscordGeminiAdmin.Domain.Structure;
 using DiscordGeminiAdmin.SharedKernel;
 using FluentResults;
 
 namespace DiscordGeminiAdmin.Application.Dependencies.Discord;
+
+public sealed record NewsPublicationResult(
+    ChannelId ChannelId,
+    ulong MessageId,
+    ulong? ThreadId);
 
 public sealed record GuildChannelSnapshot(
     ChannelId Id,
@@ -40,4 +46,6 @@ public interface IGuildGateway
     Task<Result<GuildStructureSnapshot>> GetGuildStructureAsync(GuildId guildId, CancellationToken ct);
     Task<Result<int>> ResetGuildStructureAsync(GuildId guildId, ChannelId? keepChannelId, CancellationToken ct);
     Task<Result> ApplyStructureChangesAsync(GuildId guildId, IReadOnlyList<ProposedChange> changes, CancellationToken ct);
+    Task<Result<NewsPublicationResult>> PublishNewsDigestAsync(GuildId guildId, ChannelId channelId, NewsDigestDto digest, bool createThread, string? threadTitle, CancellationToken ct);
+    Task<Result<ChannelId>> EnsureNewsChannelAsync(GuildId guildId, string? channelName, string? categoryName, CancellationToken ct);
 }

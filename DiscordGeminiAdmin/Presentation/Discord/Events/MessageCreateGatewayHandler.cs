@@ -1,7 +1,10 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
+using DiscordGeminiAdmin.Application.Dependencies.Discord;
 using DiscordGeminiAdmin.Application.UseCases.Moderation.AdminActions;
 using DiscordGeminiAdmin.Application.UseCases.Moderation.IngestMessage;
+using DiscordGeminiAdmin.Application.UseCases.News.PublishNews;
+using DiscordGeminiAdmin.Application.UseCases.News.SetupNews;
 using DiscordGeminiAdmin.Application.UseCases.Structure.Analyze;
 using DiscordGeminiAdmin.Domain.Structure;
 using DiscordGeminiAdmin.Presentation.Discord.Commands;
@@ -97,6 +100,10 @@ public sealed partial class MessageCreateGatewayHandler(
             || lower is "!stop" or "/stop" or "!skip" or "/skip" or "!now" or "/now" or "!queue" or "/queue"
             || lower.StartsWith("!play", StringComparison.Ordinal)
             || lower.StartsWith("/play", StringComparison.Ordinal)
+            || lower.StartsWith("!news", StringComparison.Ordinal)
+            || lower.StartsWith("/news", StringComparison.Ordinal)
+            || lower.StartsWith("!новости", StringComparison.Ordinal)
+            || lower.StartsWith("/новости", StringComparison.Ordinal)
             || lower.StartsWith("/help ", StringComparison.Ordinal)
             || lower.StartsWith("!help ", StringComparison.Ordinal)
             || lower.StartsWith("/setup", StringComparison.Ordinal)
@@ -241,6 +248,74 @@ public sealed partial class MessageCreateGatewayHandler(
                 await restClient.SendMessageAsync(message.ChannelId, EmbedTheme.ToChannelMessage(
                     EmbedTheme.SuccessCard("⏭️ Трек пропущен", $"Пропущен: **`{skipped}`**")));
             }
+            return true;
+        }
+
+        // 0.1. Новостные текстовые команды (!news, !новости, /news)
+        if (lower.StartsWith("!news", StringComparison.Ordinal)
+            || lower.StartsWith("/news", StringComparison.Ordinal)
+            || lower.StartsWith("!новости", StringComparison.Ordinal)
+            || lower.StartsWith("/новости", StringComparison.Ordinal))
+        {
+            var rawArg = raw.Contains(' ') ? raw[(raw.IndexOf(' ') + 1)..].Trim() : string.Empty;
+
+            if (rawArg.Equals("setup", StringComparison.OrdinalIgnoreCase))
+            {
+                var setupResult = await bus.InvokeAsync<Result<ChannelId>>(new SetupNewsChannel(guildId));
+                if (setupResult.IsFailed)
+                {
+                    await restClient.SendMessageAsync(message.ChannelId, EmbedTheme.ToChannelMessage(
+                        EmbedTheme.ErrorCard(setupResult, "Не удалось настроить канал новостей")));
+                    return true;
+                }
+
+                var card = EmbedTheme.SuccessCard("✅ Канал новостей готов!",
+                    $"Канал <#{setupResult.Value.Value}> настроен. Новости будут публиковаться туда.");
+                await restClient.SendMessageAsync(message.ChannelId, EmbedTheme.ToChannelMessage(card));
+                return true;
+            }
+
+            var inThread = true;
+            var inCurrentChannel = false;
+            string? topic = null;
+
+            if (rawArg.StartsWith("thread", StringComparison.OrdinalIgnoreCase))
+            {
+                inCurrentChannel = true;
+                inThread = true;
+                topic = rawArg["thread".Length..].Trim();
+            }
+            else if (!string.IsNullOrWhiteSpace(rawArg))
+            {
+                topic = rawArg;
+            }
+
+            await restClient.SendMessageAsync(message.ChannelId, EmbedTheme.ToChannelMessage(
+                EmbedTheme.Card("🔍 Сбор свежих новостей...",
+                    "ИИ собирает актуальные технологические события через Google Search и готовит дайджест с веткой обсуждения...",
+                    EmbedTheme.Primary)));
+
+            ChannelId? targetChannelId = inCurrentChannel ? channelId : null;
+            var pubResult = await bus.InvokeAsync<Result<NewsPublicationResult>>(new PublishNews(
+                guildId,
+                TargetChannelId: targetChannelId,
+                Topic: string.IsNullOrWhiteSpace(topic) ? null : topic,
+                InNewThread: inThread));
+
+            if (pubResult.IsFailed)
+            {
+                await restClient.SendMessageAsync(message.ChannelId, EmbedTheme.ToChannelMessage(
+                    EmbedTheme.ErrorCard(pubResult, "Не удалось опубликовать новости")));
+                return true;
+            }
+
+            var threadNotice = pubResult.Value.ThreadId is not null
+                ? $"\n💬 Ветка обсуждения: <#{pubResult.Value.ThreadId.Value}>"
+                : string.Empty;
+
+            var finishCard = EmbedTheme.SuccessCard("📰 Новости опубликованы!",
+                $"Дайджест опубликован в <#{pubResult.Value.ChannelId.Value}>.{threadNotice}");
+            await restClient.SendMessageAsync(message.ChannelId, EmbedTheme.ToChannelMessage(finishCard));
             return true;
         }
 
