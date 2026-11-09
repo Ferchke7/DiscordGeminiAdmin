@@ -90,6 +90,8 @@ public sealed partial class MessageCreateGatewayHandler(
             || lower.StartsWith("!help ", StringComparison.Ordinal)
             || lower.StartsWith("/setup", StringComparison.Ordinal)
             || lower.StartsWith("!setup", StringComparison.Ordinal)
+            || lower.StartsWith("/reset-setup", StringComparison.Ordinal)
+            || lower.StartsWith("!reset-setup", StringComparison.Ordinal)
             || lower.StartsWith("/mod-config set-theme", StringComparison.Ordinal)
             || lower.StartsWith("/ai", StringComparison.Ordinal)
             || lower.StartsWith("!ai", StringComparison.Ordinal)
@@ -131,7 +133,33 @@ public sealed partial class MessageCreateGatewayHandler(
             return true;
         }
 
-        // 3. /setup ... или !setup ... — сразу задаёт тематику и поднимает группы/голосовые/текстовые каналы и роли
+        // 3. /reset-setup ... или !reset-setup ... — полная очистка и пересборка сервера с описаниями
+        if (lower.StartsWith("/reset-setup", StringComparison.Ordinal)
+            || lower.StartsWith("!reset-setup", StringComparison.Ordinal))
+        {
+            var theme = raw
+                .Replace("/reset-setup", string.Empty, StringComparison.OrdinalIgnoreCase)
+                .Replace("!reset-setup", string.Empty, StringComparison.OrdinalIgnoreCase)
+                .Replace("theme:", string.Empty, StringComparison.OrdinalIgnoreCase)
+                .Trim(' ', '"', '\'');
+            var effectiveTheme = string.IsNullOrWhiteSpace(theme) ? null : theme;
+
+            var goal = effectiveTheme is not null
+                ? $"Полностью пересобери сервер с нуля под тематику «{effectiveTheme}»: создай категории, текстовые каналы (обязательно с подробными правилами и описаниями для каждого канала), голосовые комнаты и роли."
+                : "Полностью пересобери сервер с нуля под его тематику: создай категории, текстовые каналы (обязательно с подробными правилами и описаниями для каждого канала), голосовые комнаты и роли.";
+
+            var result = await bus.InvokeAsync<Result<StructureProposal>>(
+                new AnalyzeGuildStructure(guildId, goal, channelId, ApplyImmediately: true, NewTheme: effectiveTheme, ResetExisting: true));
+
+            var card = result.IsSuccess
+                ? OrganizeCommands.BuildAppliedStructureCard($"🔄 Сервер полностью очищен и пересобран{(effectiveTheme is not null ? $": {effectiveTheme}" : string.Empty)}", result.Value)
+                : EmbedTheme.ErrorCard(result, "Не удалось выполнить сброс и пересборку сервера");
+
+            await restClient.SendMessageAsync(message.ChannelId, EmbedTheme.ToChannelMessage(card));
+            return true;
+        }
+
+        // 4. /setup ... или !setup ... — сразу задаёт тематику и поднимает группы/голосовые/текстовые каналы и роли
         if (lower.StartsWith("/setup", StringComparison.Ordinal)
             || lower.StartsWith("!setup", StringComparison.Ordinal)
             || lower.StartsWith("/mod-config set-theme", StringComparison.Ordinal))
