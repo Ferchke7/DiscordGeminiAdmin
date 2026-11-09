@@ -25,7 +25,7 @@ services:
     environment:
       - _JAVA_OPTIONS=-Xmx512M
       - LAVALINK_PASSWORD=${LAVALINK_PASSWORD:-youshallnotpass}
-      - YANDEX_MUSIC_TOKEN=${YANDEX_MUSIC_TOKEN:-}
+      - YANDEX_MUSIC_TOKEN=${YANDEX_MUSIC_TOKEN:-placeholder_token}
     volumes:
       - ./lavalink/application.yml:/opt/Lavalink/application.yml
       - dga-lavalink-plugins:/opt/Lavalink/plugins

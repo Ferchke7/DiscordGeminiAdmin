@@ -9,7 +9,7 @@ lavalink:
     - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.4.1"
       repository: "https://maven.lavalink.dev/releases"
   server:
-    password: "${LAVALINK_PASSWORD:-youshallnotpass}"
+    password: "${LAVALINK_PASSWORD:youshallnotpass}"
     sources:
       youtube: false
       bandcamp: true
@@ -50,6 +50,6 @@ plugins:
       deezer: false
       yandexmusic: true
     yandexmusic:
-      accessToken: "${YANDEX_MUSIC_TOKEN:-}"
+      accessToken: "${YANDEX_MUSIC_TOKEN:placeholder_token}"
       playlistPageSize: 100
       maxPageCount: 10
