@@ -29,6 +29,7 @@ namespace DiscordGeminiAdmin.Presentation.Discord.Events;
 public sealed partial class MessageCreateGatewayHandler(
     IServiceScopeFactory scopeFactory,
     RestClient restClient,
+    GatewayClient gatewayClient,
     IAudioService audioService,
     ILogger<MessageCreateGatewayHandler> logger) : IMessageCreateGatewayHandler
 {
@@ -129,7 +130,8 @@ public sealed partial class MessageCreateGatewayHandler(
         // 0. Музыкальные текстовые команды (!play, !stop, !skip, !now, !queue)
         if (lower.StartsWith("!play", StringComparison.Ordinal) || lower.StartsWith("/play ", StringComparison.Ordinal))
         {
-            var query = raw.Contains(' ') ? raw[(raw.IndexOf(' ') + 1)..].Trim() : string.Empty;
+            var rawQuery = raw.Contains(' ') ? raw[(raw.IndexOf(' ') + 1)..].Trim() : string.Empty;
+            var query = MusicQueryHelper.Clean(rawQuery);
             if (string.IsNullOrWhiteSpace(query))
             {
                 await restClient.SendMessageAsync(message.ChannelId, EmbedTheme.ToChannelMessage(
@@ -138,23 +140,42 @@ public sealed partial class MessageCreateGatewayHandler(
             }
 
             var player = await audioService.Players.GetPlayerAsync<QueuedLavalinkPlayer>(guildId.Value);
-            var isUrl = query.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-                        query.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+            if (player is null)
+            {
+                ulong? userVoiceChannelId = null;
+                if (gatewayClient.Cache.Guilds.TryGetValue(guildId.Value, out var cachedGuild)
+                    && cachedGuild.VoiceStates.TryGetValue(message.Author.Id, out var vs)
+                    && vs.ChannelId.HasValue)
+                {
+                    userVoiceChannelId = vs.ChannelId.Value;
+                }
 
-            var loadMode = isUrl ? TrackSearchMode.None : TrackSearchMode.YouTube;
+                if (userVoiceChannelId.HasValue)
+                {
+                    player = await audioService.Players.JoinAsync<QueuedLavalinkPlayer, QueuedLavalinkPlayerOptions>(
+                        guildId.Value,
+                        userVoiceChannelId.Value,
+                        PlayerFactory.Queued);
+                }
+                else
+                {
+                    await restClient.SendMessageAsync(message.ChannelId, EmbedTheme.ToChannelMessage(
+                        EmbedTheme.ErrorCard("Подключитесь к любому голосовому каналу, чтобы включить музыку.")));
+                    return true;
+                }
+            }
+
+            var isUrl = MusicQueryHelper.IsUrl(query);
+            var hasSearchPrefix = MusicQueryHelper.HasSearchPrefix(query);
+            var loadMode = (isUrl || hasSearchPrefix) ? TrackSearchMode.None : TrackSearchMode.YouTube;
             var searchResult = await audioService.Tracks.LoadTracksAsync(query, loadMode);
 
             if (!searchResult.HasMatches || searchResult.IsFailed)
             {
                 await restClient.SendMessageAsync(message.ChannelId, EmbedTheme.ToChannelMessage(
-                    EmbedTheme.ErrorCard($"По запросу «{query}» ничего не найдено.")));
-                return true;
-            }
-
-            if (player is null)
-            {
-                await restClient.SendMessageAsync(message.ChannelId, EmbedTheme.ToChannelMessage(
-                    EmbedTheme.ErrorCard("Используйте слэш-команду `/play`, чтобы бот определил ваш голосовой канал и подключился к нему.")));
+                    EmbedTheme.ErrorCard(
+                        searchResult.Exception?.Message ?? "Ничего не найдено",
+                        $"По запросу «{query}» не удалось найти аудиозаписи.")));
                 return true;
             }
 

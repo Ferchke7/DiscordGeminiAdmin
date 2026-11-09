@@ -59,17 +59,23 @@ public sealed class MusicCommands(IAudioService audioService) : ApplicationComma
                 PlayerFactory.Queued);
         }
 
-        var isUrl = query.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-                    query.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+        var cleanQuery = MusicQueryHelper.Clean(query);
+        if (string.IsNullOrWhiteSpace(cleanQuery))
+        {
+            await FollowupAsync(EmbedTheme.ErrorCard("Укажите поисковый запрос или ссылку на трек/плейлист."));
+            return;
+        }
 
-        var loadMode = isUrl ? TrackSearchMode.None : TrackSearchMode.YouTube;
-        var searchResult = await audioService.Tracks.LoadTracksAsync(query.Trim(), loadMode);
+        var isUrl = MusicQueryHelper.IsUrl(cleanQuery);
+        var hasSearchPrefix = MusicQueryHelper.HasSearchPrefix(cleanQuery);
+        var loadMode = (isUrl || hasSearchPrefix) ? TrackSearchMode.None : TrackSearchMode.YouTube;
+        var searchResult = await audioService.Tracks.LoadTracksAsync(cleanQuery, loadMode);
 
         if (!searchResult.HasMatches || searchResult.IsFailed)
         {
             await FollowupAsync(EmbedTheme.ErrorCard(
                 searchResult.Exception?.Message ?? "Ничего не найдено",
-                $"По запросу «{query}» не удалось найти аудиозаписи."));
+                $"По запросу «{cleanQuery}» не удалось найти аудиозаписи."));
             return;
         }
 
